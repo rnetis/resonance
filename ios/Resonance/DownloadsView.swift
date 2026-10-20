@@ -97,7 +97,10 @@ struct DownloadsView: View {
             mtime: nil,
             hasCover: job.hasCover ?? false,
             url: nil,
-            cover: nil
+            cover: nil,
+            hls: nil,
+            scope: "library",
+            user: nil
         )
 
         Task { await offline.save(track) }

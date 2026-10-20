@@ -121,7 +121,10 @@ final class PlaylistStore: ObservableObject {
                 mtime: nil,
                 hasCover: entry.hasCover,
                 url: nil,
-                cover: nil
+                cover: nil,
+                hls: nil,
+                scope: "library",
+                user: nil
             )
 
             return offline.playable(track, client: client)
