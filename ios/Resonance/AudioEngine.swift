@@ -52,16 +52,32 @@ struct PlayableTrack: Identifiable, Codable, Hashable {
     var trackPath: String?
     var artworkURLString: String?
     var remoteURLString: String?
+    /// Chunked (HLS) playlist. Preferred for remote playback: AVPlayer starts
+    /// playing as soon as the first small segment arrives.
+    var chunkedURLString: String?
     var localPath: String?
     var source: Source
 
     var isLocal: Bool { localPath != nil }
 
+    /// What to actually play: a local copy, else the chunked stream, else the
+    /// whole-file stream.
     var playbackURL: URL? {
         if let localPath {
             return URL(fileURLWithPath: localPath)
         }
+        if let chunkedURLString, let chunked = URL(string: chunkedURLString) {
+            return chunked
+        }
         return remoteURLString.flatMap(URL.init(string:))
+    }
+
+    /// Used when the chunked stream cannot be played (no ffmpeg on the server,
+    /// playlist request failed): the whole-file Range stream always works.
+    var fallbackURL: URL? {
+        guard !isLocal else { return nil }
+        guard let remoteURLString, let fallback = URL(string: remoteURLString) else { return nil }
+        return fallback == playbackURL ? nil : fallback
     }
 
     var subtitle: String {
@@ -72,15 +88,42 @@ struct PlayableTrack: Identifiable, Codable, Hashable {
     // MARK: Factories
 
     static func streamed(_ track: Track, client: APIClient) -> PlayableTrack {
-        PlayableTrack(
-            id: "library:" + track.path,
+        let scope = track.scope
+        let prefix = scope == "shared" ? "shared:" : "library:"
+
+        // The API hands back ready-made URLs that already name the library; fall
+        // back to building them so older servers keep working.
+        let chunked = client.absolute(track.hls) ?? client.playlistURL(for: track.path, scope: scope)
+        let progressive = client.absolute(track.url) ?? client.streamURL(for: track.path, scope: scope)
+        let artwork = track.hasCover ? (client.absolute(track.cover) ?? client.coverURL(for: track.path, scope: scope)) : nil
+
+        return PlayableTrack(
+            id: prefix + track.path,
             title: track.title,
             artist: track.artist,
             album: track.album,
             duration: track.duration,
             trackPath: track.path,
-            artworkURLString: track.hasCover ? client.coverURL(for: track.path)?.absoluteString : nil,
-            remoteURLString: client.streamURL(for: track.path)?.absoluteString,
+            artworkURLString: artwork?.absoluteString,
+            remoteURLString: progressive?.absoluteString,
+            chunkedURLString: chunked?.absoluteString,
+            localPath: nil,
+            source: .library
+        )
+    }
+
+    /// Someone else's track, played straight from their library via a share.
+    static func from(share: Share, client: APIClient) -> PlayableTrack {
+        PlayableTrack(
+            id: "share:" + share.id,
+            title: share.title,
+            artist: share.artist ?? "from \(share.from)",
+            album: share.album,
+            duration: share.duration,
+            trackPath: share.trackPath,
+            artworkURLString: (share.hasCover ?? false) ? client.absolute(share.cover)?.absoluteString : nil,
+            remoteURLString: client.absolute(share.stream)?.absoluteString,
+            chunkedURLString: client.absolute(share.hls)?.absoluteString,
             localPath: nil,
             source: .library
         )
@@ -106,6 +149,7 @@ struct PlayableTrack: Identifiable, Codable, Hashable {
             trackPath: file,
             artworkURLString: (job.hasCover ?? false) ? client.coverURL(for: file)?.absoluteString : job.thumbnail,
             remoteURLString: client.streamURL(for: file)?.absoluteString,
+            chunkedURLString: client.playlistURL(for: file)?.absoluteString,
             localPath: nil,
             source: .library
         )
@@ -121,6 +165,7 @@ struct PlayableTrack: Identifiable, Codable, Hashable {
             trackPath: entry.trackPath,
             artworkURLString: client.coverURL(for: entry.trackPath)?.absoluteString,
             remoteURLString: nil,
+            chunkedURLString: nil,
             localPath: fileURL.path,
             source: .offlineCopy
         )
@@ -165,6 +210,9 @@ final class AudioEngine: NSObject, ObservableObject {
     private var interruptionObserver: NSObjectProtocol?
     private var routeObserver: NSObjectProtocol?
     private var artworkTask: Task<Void, Never>?
+    private var itemStatusObservation: NSKeyValueObservation?
+    private var progressiveFallback: URL?
+    private var didFallBack = false
     private var shuffleOrder: [Int] = []
     private var nowPlayingArtwork: MPMediaItemArtwork?
     private var nowPlayingArtworkKey: String?
@@ -337,8 +385,21 @@ final class AudioEngine: NSObject, ObservableObject {
             return
         }
 
+        progressiveFallback = track.fallbackURL
+        didFallBack = false
+        install(url: url, track: track, autoplay: autoplay)
+    }
+
+    private func install(url: URL, track: PlayableTrack, autoplay: Bool) {
         errorMessage = nil
-        player.replaceCurrentItem(with: AVPlayerItem(url: url))
+
+        let item = AVPlayerItem(url: url)
+        itemStatusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
+            guard item.status == .failed else { return }
+            DispatchQueue.main.async { self?.handleItemFailure(item) }
+        }
+
+        player.replaceCurrentItem(with: item)
         position = 0
         duration = track.duration ?? 0
         isUsingLocalFile = track.isLocal
@@ -353,6 +414,25 @@ final class AudioEngine: NSObject, ObservableObject {
         } else {
             isPlaying = false
             refreshNowPlayingState()
+        }
+    }
+
+    /// A chunked stream can be unavailable (no ffmpeg, playlist not ready yet).
+    /// Fall back once to the whole-file stream instead of failing the track.
+    private func handleItemFailure(_ item: AVPlayerItem) {
+        guard item == player.currentItem else { return }
+
+        if let fallback = progressiveFallback, !didFallBack, let track = current {
+            didFallBack = true
+            progressiveFallback = nil
+            install(url: fallback, track: track, autoplay: true)
+            return
+        }
+
+        if let reason = item.error?.localizedDescription, !reason.isEmpty {
+            errorMessage = reason
+        } else {
+            errorMessage = "This track could not be played."
         }
     }
 

@@ -24,8 +24,15 @@ struct Track: Codable, Identifiable, Hashable {
     let hasCover: Bool
     let url: String?
     let cover: String?
+    /// Chunked (HLS) playlist: playback starts after the first small segment.
+    let hls: String?
+    /// "library" for someone's own folder, "shared" for the area everyone sees.
+    let scope: String?
+    let user: String?
 
-    var id: String { path }
+    var id: String { scope == "shared" ? "shared:" + path : path }
+
+    var isFromSharedArea: Bool { scope == "shared" }
 }
 
 struct LibraryFolder: Codable, Identifiable, Hashable {
@@ -42,6 +49,9 @@ struct LibraryPage: Codable {
     let folders: [LibraryFolder]
     let tracks: [Track]
     let total: Int
+    let scope: String?
+    let writable: Bool?
+    let user: String?
 }
 
 struct JobProgress: Codable, Hashable {
@@ -101,6 +111,71 @@ struct Health: Codable {
     let ffprobe: Bool
     let activeDownloads: Int
     let queued: Int
+    /// Multi-user + chunked-streaming capabilities (older servers omit these).
+    let defaultUser: String?
+    let user: String?
+    let users: Int?
+    let shares: Int?
+    let ffmpeg: Bool?
+    let chunked: Bool?
+    let segmentSeconds: Double?
+}
+
+/// Someone with their own library on the server (`GET /api/users`).
+struct UserSummary: Codable, Identifiable, Hashable {
+    let name: String
+    let tracks: Int
+    let bytes: Double?
+    let createdAt: String?
+    let isDefault: Bool?
+
+    var id: String { name }
+
+    var summary: String {
+        let songs = "\(tracks) \(tracks == 1 ? "song" : "songs")"
+        return (isDefault ?? false) ? "\(songs) · server owner" : songs
+    }
+}
+
+struct UsersPage: Codable {
+    let defaultUser: String
+    let users: [UserSummary]
+}
+
+/// A track one person sent to another (`GET /api/shares`).
+struct Share: Codable, Identifiable, Hashable {
+    let id: String
+    let from: String
+    let to: String
+    let trackPath: String
+    let title: String
+    let artist: String?
+    let album: String?
+    let duration: Double?
+    let hasCover: Bool?
+    let note: String?
+    let createdAt: String
+    let available: Bool
+    let stream: String
+    let cover: String?
+    let hls: String?
+
+    var isBroadcast: Bool { to == "*" }
+
+    var counterpart: String { isBroadcast ? "everyone" : to }
+}
+
+struct SharesPage: Codable {
+    let user: String?
+    let incoming: [Share]
+    let outgoing: [Share]
+}
+
+struct ImportResult: Codable {
+    let imported: Bool?
+    let user: String?
+    let path: String?
+    let track: Track?
 }
 
 struct DurationResponse: Codable {

@@ -6,10 +6,15 @@ final class ServerStore: ObservableObject {
     private enum Keys {
         static let serverURL = "resonance.serverURL"
         static let trustSelfSigned = "resonance.trustSelfSigned"
+        static let username = "resonance.username"
     }
 
     @Published private(set) var serverURL: String
     @Published private(set) var trustSelfSigned: Bool
+    /// Which person's library this device browses. A name, not a password.
+    @Published private(set) var username: String
+    @Published var users: [UserSummary] = []
+    @Published var defaultUser: String = ""
     @Published var connectionError: String?
     @Published var isTesting = false
     @Published var health: Health?
@@ -23,17 +28,67 @@ final class ServerStore: ObservableObject {
 
         let storedURL = defaults.string(forKey: Keys.serverURL) ?? ""
         let storedTrust = defaults.bool(forKey: Keys.trustSelfSigned)
+        let storedUser = defaults.string(forKey: Keys.username) ?? ""
 
         serverURL = storedURL
         trustSelfSigned = storedTrust
+        username = storedUser
         api = APIClient(
             baseURL: URL(string: storedURL) ?? URL(string: "http://127.0.0.1:3000")!,
-            trustSelfSigned: storedTrust
+            trustSelfSigned: storedTrust,
+            username: storedUser.isEmpty ? nil : storedUser
         )
     }
 
     var isConfigured: Bool { Self.isValid(serverURL) }
     var displayHost: String { URL(string: serverURL)?.host ?? serverURL }
+    var displayUser: String { username.isEmpty ? "Guest" : username }
+
+    /// Remembers who is listening; every request then selects their library.
+    func setUsername(_ raw: String) {
+        let clean = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        username = clean
+        defaults.set(clean, forKey: Keys.username)
+        api.username = clean.isEmpty ? nil : clean
+    }
+
+    func loadUsers() async {
+        guard isConfigured else { return }
+
+        do {
+            let page = try await api.users()
+            await MainActor.run {
+                self.users = page.users
+                self.defaultUser = page.defaultUser
+            }
+        } catch {
+            await MainActor.run { self.connectionError = error.localizedDescription }
+        }
+    }
+
+    /// Creates the name if it is new, then starts browsing as that person.
+    @discardableResult
+    func adopt(username raw: String) async -> Bool {
+        let clean = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !clean.isEmpty else { return false }
+
+        if let existing = users.first(where: { $0.name == clean }) {
+            setUsername(existing.name)
+            return true
+        }
+
+        do {
+            let created = try await api.createUser(clean)
+            await MainActor.run {
+                self.users.append(created)
+                self.setUsername(created.name)
+            }
+            return true
+        } catch {
+            await MainActor.run { self.connectionError = error.localizedDescription }
+            return false
+        }
+    }
 
     func save(_ rawURL: String, trustSelfSigned trust: Bool) {
         let normalized = Self.normalize(rawURL)
@@ -43,7 +98,7 @@ final class ServerStore: ObservableObject {
         defaults.set(trust, forKey: Keys.trustSelfSigned)
 
         if let url = URL(string: normalized) {
-            api.update(baseURL: url, trustSelfSigned: trust)
+            api.update(baseURL: url, trustSelfSigned: trust, username: username.isEmpty ? nil : username)
         }
 
         connectionError = nil

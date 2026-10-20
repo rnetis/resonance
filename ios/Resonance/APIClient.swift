@@ -27,6 +27,9 @@ enum APIError: LocalizedError {
 final class APIClient: NSObject, URLSessionDelegate {
     private(set) var baseURL: URL
     var trustSelfSigned: Bool
+    /// Which library the server shows us. A name, not a password: everyone on a
+    /// LAN server picks their own name and gets their own folder.
+    var username: String?
 
     private lazy var session: URLSession = {
         let configuration = URLSessionConfiguration.default
@@ -36,15 +39,17 @@ final class APIClient: NSObject, URLSessionDelegate {
         return URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
     }()
 
-    init(baseURL: URL, trustSelfSigned: Bool) {
+    init(baseURL: URL, trustSelfSigned: Bool, username: String? = nil) {
         self.baseURL = baseURL
         self.trustSelfSigned = trustSelfSigned
+        self.username = username
         super.init()
     }
 
-    func update(baseURL: URL, trustSelfSigned: Bool) {
+    func update(baseURL: URL, trustSelfSigned: Bool, username: String? = nil) {
         self.baseURL = baseURL
         self.trustSelfSigned = trustSelfSigned
+        self.username = username
     }
 
     /// Shared session so artwork and file downloads honour the same TLS policy.
@@ -60,12 +65,55 @@ final class APIClient: NSObject, URLSessionDelegate {
         return components.url
     }
 
-    func streamURL(for trackPath: String) -> URL? {
-        url(path: "api/stream", query: [URLQueryItem(name: "path", value: trackPath)])
+    /// Media URLs carry the identity as a query item: AVPlayer and UIKit image
+    /// loading do not send custom headers.
+    private var identityQuery: [URLQueryItem] {
+        guard let username, !username.isEmpty else { return [] }
+        return [URLQueryItem(name: "user", value: username)]
     }
 
-    func coverURL(for trackPath: String) -> URL? {
-        url(path: "api/cover", query: [URLQueryItem(name: "path", value: trackPath)])
+    private func mediaQuery(path: String, scope: String?, share: String? = nil) -> [URLQueryItem] {
+        var query: [URLQueryItem] = []
+
+        if let share {
+            query.append(URLQueryItem(name: "share", value: share))
+        } else {
+            query.append(URLQueryItem(name: "path", value: path))
+            if scope == "shared" {
+                query.append(URLQueryItem(name: "scope", value: "shared"))
+            }
+        }
+
+        return query + identityQuery
+    }
+
+    func streamURL(for trackPath: String, scope: String? = nil) -> URL? {
+        url(path: "api/stream", query: mediaQuery(path: trackPath, scope: scope))
+    }
+
+    func coverURL(for trackPath: String, scope: String? = nil) -> URL? {
+        url(path: "api/cover", query: mediaQuery(path: trackPath, scope: scope))
+    }
+
+    /// Chunked (HLS) playlist — playback starts after the first small segment.
+    func playlistURL(for trackPath: String, scope: String? = nil) -> URL? {
+        url(path: "api/playlist.m3u8", query: mediaQuery(path: trackPath, scope: scope))
+    }
+
+    func playlistURL(forShare id: String) -> URL? {
+        url(path: "api/playlist.m3u8", query: mediaQuery(path: "", scope: nil, share: id))
+    }
+
+    /// Turns a server-relative URL (what the API hands back) into an absolute one.
+    func absolute(_ relative: String?) -> URL? {
+        guard let relative, !relative.isEmpty else { return nil }
+
+        if let url = URL(string: relative), url.scheme != nil {
+            return url
+        }
+
+        guard let components = URLComponents(string: relative) else { return nil }
+        return url(path: components.path, query: components.queryItems ?? [])
     }
 
     // MARK: - Endpoints
@@ -78,12 +126,51 @@ final class APIClient: NSObject, URLSessionDelegate {
         try await get("api/search", query: [URLQueryItem(name: "q", value: query)], as: [SearchResult].self)
     }
 
-    func library(path: String = "", recursive: Bool) async throws -> LibraryPage {
+    func library(path: String = "", recursive: Bool, scope: String? = nil) async throws -> LibraryPage {
         var query = [URLQueryItem(name: "path", value: path)]
         if recursive {
             query.append(URLQueryItem(name: "recursive", value: "1"))
         }
+        if scope == "shared" {
+            query.append(URLQueryItem(name: "scope", value: "shared"))
+        }
         return try await get("api/tracks", query: query, as: LibraryPage.self)
+    }
+
+    // MARK: - People
+
+    func users() async throws -> UsersPage {
+        try await get("api/users", as: UsersPage.self)
+    }
+
+    func createUser(_ name: String) async throws -> UserSummary {
+        try await post("api/users", body: ["name": name], as: UserSummary.self)
+    }
+
+    func me() async throws -> UserSummary {
+        try await get("api/me", as: UserSummary.self)
+    }
+
+    // MARK: - Sharing
+
+    func shares() async throws -> SharesPage {
+        try await get("api/shares", as: SharesPage.self)
+    }
+
+    func share(trackPath: String, to: String, note: String? = nil) async throws -> Share {
+        var body: [String: Any] = ["trackPath": trackPath, "to": to]
+        if let note, !note.isEmpty {
+            body["note"] = note
+        }
+        return try await post("api/share", body: body, as: Share.self)
+    }
+
+    func revokeShare(_ id: String) async throws {
+        _ = try await delete("api/shares/\(id)", as: RemovedResponse.self)
+    }
+
+    func importShare(_ id: String) async throws -> ImportResult {
+        try await post("api/shares/\(id)/import", as: ImportResult.self)
     }
 
     func probeDuration(_ trackPath: String) async throws -> DurationResponse {
@@ -129,7 +216,22 @@ final class APIClient: NSObject, URLSessionDelegate {
         return try await send(request, as: type)
     }
 
+    private func post<T: Decodable>(_ path: String, as type: T.Type) async throws -> T {
+        guard let url = url(path: path) else { throw APIError.invalidAddress }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data("{}".utf8)
+        return try await send(request, as: type)
+    }
+
     private func send<T: Decodable>(_ request: URLRequest, as type: T.Type) async throws -> T {
+        var request = request
+
+        if let username, !username.isEmpty {
+            request.setValue(username, forHTTPHeaderField: "X-Resonance-User")
+        }
+
         let data: Data
         let response: URLResponse
 

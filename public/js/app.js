@@ -23,6 +23,19 @@ import {
   emptyState,
   pool
 } from "./util.js";
+import {
+  currentUser,
+  setCurrentUser,
+  identityHeaders,
+  withUser,
+  apiFetch,
+  listShares,
+  revokeShare,
+  importShare,
+  chooseUser,
+  chooseFrom,
+  shareTrackDialog
+} from "./social.js";
 
 const LS = {
   recursive: "resonance.recursive",
@@ -57,7 +70,10 @@ const state = {
   playlists: [],
   offlineTracks: [],
   installPrompt: null,
-  serverOnline: null
+  serverOnline: null,
+  scope: "library",       // library | shared (the read-only area everyone sees)
+  shareScope: "incoming", // incoming | outgoing
+  shares: { incoming: [], outgoing: [] }
 };
 
 const dom = {};
@@ -123,13 +139,18 @@ function isJobActive(job) {
 /** Library API row -> player track. */
 function toPlayerTrack(row) {
   return {
-    id: `local:${row.path}`,
+    id: `local:${row.scope === "shared" ? "shared:" : ""}${row.path}`,
     source: "local",
     path: row.path,
+    scope: row.scope || "library",
     title: row.title || prettyName(row.path),
     artist: row.artist || row.album || null,
     album: row.album || null,
     duration: row.duration ?? null,
+    // The server hands back URLs that already carry the right ?user= / ?scope=,
+    // which matters because <audio> and <img> cannot send headers.
+    url: row.url || null,
+    hls: row.hls || null,
     cover: row.hasCover ? row.cover : null,
     size: row.size ?? null
   };
@@ -146,7 +167,8 @@ function trackFromJob(job) {
     artist: job.artist || job.channel || null,
     album: job.album || null,
     duration: job.duration ?? null,
-    cover: job.hasCover ? `/api/cover?path=${encodeURIComponent(job.file)}` : null,
+    url: withUser(`/api/stream?path=${encodeURIComponent(job.file)}`),
+    cover: job.hasCover ? withUser(`/api/cover?path=${encodeURIComponent(job.file)}`) : null,
     size: null
   };
 }
@@ -172,25 +194,8 @@ function trackSubtitle(track) {
   return bits.length ? bits.join(" · ") : "Unknown artist";
 }
 
-async function api(path, options) {
-  const response = await fetch(path, options);
-  const text = await response.text();
-  let data = null;
-
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = null;
-  }
-
-  if (!response.ok) {
-    const error = new Error(data?.error || `Request failed (${response.status})`);
-    error.status = response.status;
-    throw error;
-  }
-
-  return data;
-}
+// Every API call carries the current identity (see social.js).
+const api = (path, options) => apiFetch(path, options);
 
 function setStatus(node, message, { error = false, spinning = false } = {}) {
   if (!message) {
@@ -703,7 +708,10 @@ function renderCrumbs() {
   const parts = state.libPath ? state.libPath.split("/") : [];
 
   dom.libCrumbs.append(
-    el("button", { text: "Music", onclick: () => loadLibrary("") })
+    el("button", {
+      text: state.scope === "shared" ? "Shared area" : "Music",
+      onclick: () => loadLibrary("")
+    })
   );
 
   parts.forEach((part, index) => {
@@ -724,7 +732,8 @@ async function loadLibrary(path = state.libPath, { quiet = false } = {}) {
   if (!quiet) setStatus(dom.libraryStatus, "Loading library…", { spinning: true });
 
   try {
-    const data = await api(`/api/tracks?path=${encodeURIComponent(path)}${state.recursive ? "&recursive=1" : ""}`);
+    const scope = state.scope === "shared" ? "&scope=shared" : "";
+    const data = await api(`/api/tracks?path=${encodeURIComponent(path)}${state.recursive ? "&recursive=1" : ""}${scope}`);
     state.library = data;
     state.serverOnline = true;
     setStatus(dom.libraryStatus, "");
@@ -781,55 +790,7 @@ function renderLibrary() {
       subtitle: trackSubtitle(track),
       meta: track.duration ? fmtTime(track.duration) : "",
       onActivate: () => playLibraryTrack(track, trackList, index),
-      menu: () => [
-        { label: "Play", icon: "play", onSelect: () => player.setQueue(trackList, index, { play: true }) },
-        { label: "Play next", icon: "next", onSelect: () => player.playNext(track) },
-        { label: "Add to queue", icon: "list", onSelect: () => player.enqueue(track) },
-        { separator: "Playlists" },
-        ...playlistMenuItems(track),
-        { separator: "Storage" },
-        {
-          label: offline.has(streamUrlFor(track)) ? "Remove offline copy" : "Save for offline",
-          icon: offline.has(streamUrlFor(track)) ? "trash" : "download",
-          onSelect: () => toggleOffline(track)
-        },
-        {
-          label: "Download file",
-          icon: "download",
-          onSelect: () => {
-            const link = document.createElement("a");
-            link.href = `${track.path ? `/api/stream?path=${encodeURIComponent(track.path)}&download=1` : "#"}`;
-            link.download = "";
-            document.body.append(link);
-            link.click();
-            link.remove();
-          }
-        },
-        { separator: "Danger" },
-        {
-          label: "Delete from library",
-          icon: "trash",
-          danger: true,
-          onSelect: async () => {
-            const ok = await confirmDialog({
-              title: "Delete track?",
-              message: `${track.title} will be removed from ${state.libPath || "/music"}.`,
-              confirmLabel: "Delete"
-            });
-            if (!ok) return;
-
-            try {
-              await api(`/api/track?path=${encodeURIComponent(track.path)}`, { method: "DELETE" });
-              await offline.remove(streamUrlFor(track)).catch(() => {});
-              toast("Track deleted");
-              loadLibrary(state.libPath, { quiet: true });
-              refreshOffline();
-            } catch (error) {
-              toast(error.message);
-            }
-          }
-        }
-      ]
+      menu: () => libraryMenu(track, trackList, index)
     });
 
     list.append(li);
@@ -837,6 +798,81 @@ function renderLibrary() {
 
   updateLibraryActions();
   syncRows();
+}
+
+/** Row menu for a library track. The shared area is read-only. */
+function libraryMenu(track, trackList, index) {
+  const mine = (track.scope || "library") !== "shared";
+  const mediaUrl = streamUrlFor(track);
+  const saved = mediaUrl ? offline.has(mediaUrl) : false;
+
+  const items = [
+    { label: "Play", icon: "play", onSelect: () => player.setQueue(trackList, index, { play: true }) },
+    { label: "Play next", icon: "next", onSelect: () => player.playNext(track) },
+    { label: "Add to queue", icon: "list", onSelect: () => player.enqueue(track) },
+    { separator: "Playlists" },
+    ...playlistMenuItems(track)
+  ];
+
+  if (mine) {
+    items.push(
+      { separator: "Sharing" },
+      { label: "Share with…", icon: "share", onSelect: () => shareTrackDialog(track, { me: currentUser() }) }
+    );
+  }
+
+  items.push(
+    { separator: "Storage" },
+    {
+      label: saved ? "Remove offline copy" : "Save for offline",
+      icon: saved ? "trash" : "download",
+      onSelect: () => toggleOffline(track)
+    },
+    {
+      label: "Download file",
+      icon: "download",
+      onSelect: () => {
+        if (!mediaUrl) return;
+        const link = document.createElement("a");
+        link.href = `${mediaUrl}${mediaUrl.includes("?") ? "&" : "?"}download=1`;
+        link.download = "";
+        document.body.append(link);
+        link.click();
+        link.remove();
+      }
+    }
+  );
+
+  if (mine) {
+    items.push(
+      { separator: "Danger" },
+      {
+        label: "Delete from library",
+        icon: "trash",
+        danger: true,
+        onSelect: async () => {
+          const ok = await confirmDialog({
+            title: "Delete track?",
+            message: `${track.title} will be removed from your library.`,
+            confirmLabel: "Delete"
+          });
+          if (!ok) return;
+
+          try {
+            await api(`/api/track?path=${encodeURIComponent(track.path)}`, { method: "DELETE" });
+            await offline.remove(mediaUrl).catch(() => {});
+            toast("Track deleted");
+            loadLibrary(state.libPath, { quiet: true });
+            refreshOffline();
+          } catch (error) {
+            toast(error.message);
+          }
+        }
+      }
+    );
+  }
+
+  return items;
 }
 
 function updateLibraryActions() {
@@ -1198,6 +1234,176 @@ function renderQueue() {
   syncRows();
 }
 
+/* ------------------------------------------------------- identity + sharing */
+
+function updateUserChip() {
+  const user = currentUser();
+  dom.userChipName.textContent = user || "Guest";
+  dom.userChip.title = user ? `Library of ${user} — tap to switch` : "Pick your library";
+  dom.userChip.classList.toggle("active", Boolean(user));
+}
+
+function syncScopeButton() {
+  const shared = state.scope === "shared";
+  dom.scopeBtn.classList.toggle("active", shared);
+  dom.scopeBtn.setAttribute("aria-pressed", String(shared));
+  dom.scopeBtn.textContent = shared ? "My library" : "Everyone's songs";
+}
+
+/**
+ * Switching identity swaps the whole library, so anything derived from the
+ * previous one (queue, jobs, search results) is dropped.
+ */
+async function switchUser(name, { force = false } = {}) {
+  const previous = currentUser();
+  if (name === previous && !force) return;
+
+  setCurrentUser(name);
+  updateUserChip();
+
+  player.clearQueue();
+  state.jobs.clear();
+  state.jobNodes.clear();
+  state.searchResults = [];
+  state.library = { folders: [], tracks: [] };
+  state.shares = { incoming: [], outgoing: [] };
+  state.libPath = "";
+  state.scope = "library";
+  state.autoPlayed.clear();
+
+  jobsSeeded = false;
+  syncScopeButton();
+  renderSearchResults();
+  renderQueue();
+  updateDownloadsBadge();
+
+  await refreshOffline();
+  await loadLibrary("", { quiet: true });
+  await refreshShares({ quiet: true });
+  renderShares();
+  renderPlaylists();
+}
+
+async function refreshShares({ quiet = false } = {}) {
+  if (!quiet) setStatus(dom.sharesStatus, "Loading…", { spinning: true });
+
+  try {
+    const data = await listShares();
+    state.shares = { incoming: data.incoming || [], outgoing: data.outgoing || [] };
+    setStatus(dom.sharesStatus, "");
+  } catch (error) {
+    state.shares = { incoming: [], outgoing: [] };
+    setStatus(dom.sharesStatus, `Sharing unavailable: ${error.message}`, { error: true });
+  }
+
+  updateSharesBadge();
+}
+
+function updateSharesBadge() {
+  const count = state.shares.incoming.length;
+  dom.sharesBadge.hidden = !count;
+  dom.sharesBadge.textContent = count > 9 ? "9+" : String(count);
+}
+
+/** A shared track is playable straight from the sender's library. */
+function shareToTrack(share) {
+  return {
+    id: `share:${share.id}`,
+    source: "local",
+    path: share.trackPath,
+    scope: "share",
+    shareId: share.id,
+    title: share.title || prettyName(share.trackPath),
+    artist: share.artist || `from ${share.from}`,
+    album: share.album || null,
+    duration: share.duration ?? null,
+    url: withUser(share.stream),
+    hls: withUser(share.hls),
+    cover: share.hasCover ? withUser(share.cover) : null,
+    size: null
+  };
+}
+
+function renderShares() {
+  const list = dom.shareList;
+  list.innerHTML = "";
+
+  for (const chip of dom.shareTabs.querySelectorAll(".chip")) {
+    chip.setAttribute("aria-pressed", String(chip.dataset.scope === state.shareScope));
+  }
+
+  const incoming = state.shareScope === "incoming";
+  const shares = (incoming ? state.shares.incoming : state.shares.outgoing) || [];
+
+  if (!shares.length) {
+    list.append(
+      incoming
+        ? emptyState("Nothing shared with you yet", "When someone sends you a song it shows up here. Share your own tracks from the Library tab.")
+        : emptyState("You have not shared anything yet", "Open a track in your Library and choose “Share with…”.")
+    );
+    return;
+  }
+
+  const tracks = incoming ? shares.map(shareToTrack) : [];
+
+  shares.forEach((share, index) => {
+    const person = incoming
+      ? `from ${share.from}`
+      : share.to === "*"
+        ? "with everyone"
+        : `with ${share.to}`;
+
+    const subtitle = [share.artist, person].filter(Boolean).join(" · ");
+    const playable = incoming && share.available;
+
+    const { li, subNode } = buildTrackRow(
+      {
+        id: `share:${share.id}`,
+        title: share.title || prettyName(share.trackPath),
+        artist: share.artist,
+        album: share.album,
+        duration: share.duration ?? null,
+        cover: share.hasCover ? withUser(share.cover) : null
+      },
+      {
+        subtitle: share.available ? subtitle : `${person} · file is gone`,
+        meta: share.duration ? fmtTime(share.duration) : "",
+        onActivate: playable ? () => player.setQueue(tracks, index, { play: true }) : undefined,
+        menu: () => [
+          playable ? { label: "Play", icon: "play", onSelect: () => player.setQueue(tracks, index, { play: true }) } : null,
+          playable ? { label: "Save to my library", icon: "download", onSelect: () => saveShared(share) } : null,
+          { label: incoming ? "Dismiss" : "Revoke", icon: "trash", danger: true, onSelect: () => dropShare(share.id) }
+        ].filter(Boolean)
+      }
+    );
+
+    if (share.note) subNode.textContent = `${subtitle} — “${share.note}”`;
+    if (!share.available) li.classList.add("muted");
+
+    list.append(li);
+  });
+}
+
+async function saveShared(share) {
+  try {
+    const result = await importShare(share.id);
+    toast(`Saved “${result?.track?.title || share.title}” to your library`);
+    loadLibrary(state.libPath, { quiet: true });
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
+async function dropShare(id) {
+  try {
+    await revokeShare(id);
+    await refreshShares({ quiet: true });
+    renderShares();
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
 /* -------------------------------------------------------------- tab routing */
 
 function switchTab(tab, { focus = false } = {}) {
@@ -1219,6 +1425,8 @@ function switchTab(tab, { focus = false } = {}) {
     if (!state.library.tracks.length && !state.library.folders.length) loadLibrary(state.libPath);
   } else if (tab === "playlists") {
     refreshOffline().then(renderPlaylists);
+  } else if (tab === "shared") {
+    refreshShares({ quiet: true }).then(renderShares);
   } else if (tab === "search") {
     // Refresh download badges on existing results.
     if (state.searchResults.length) renderSearchResults();
@@ -1509,6 +1717,15 @@ function cacheDom() {
     libraryStatus: $("#libraryStatus"),
     libraryList: $("#libraryList"),
     recursiveBtn: $("#recursiveBtn"),
+    scopeBtn: $("#scopeBtn"),
+    userChip: $("#userChip"),
+    userChipName: $("#userChipName"),
+
+    shareTabs: $("#shareTabs"),
+    sharesStatus: $("#sharesStatus"),
+    shareList: $("#shareList"),
+    sharesBadge: $("#sharesBadge"),
+    refreshSharesBtn: $("#refreshSharesBtn"),
     playAllBtn: $("#playAllBtn"),
     shuffleAllBtn: $("#shuffleAllBtn"),
 
@@ -1590,6 +1807,31 @@ function wireEvents() {
     dom.recursiveBtn.setAttribute("aria-pressed", String(state.recursive));
     loadLibrary(state.libPath);
   });
+
+  dom.scopeBtn.addEventListener("click", () => {
+    state.scope = state.scope === "shared" ? "library" : "shared";
+    state.libPath = "";
+    syncScopeButton();
+    loadLibrary("");
+  });
+
+  dom.userChip.addEventListener("click", async () => {
+    const before = currentUser();
+    const picked = await chooseUser();
+    if (picked && picked !== before) switchUser(picked);
+  });
+
+  dom.refreshSharesBtn.addEventListener("click", async () => {
+    await refreshShares();
+    renderShares();
+  });
+
+  for (const chip of dom.shareTabs.querySelectorAll(".chip")) {
+    chip.addEventListener("click", () => {
+      state.shareScope = chip.dataset.scope;
+      renderShares();
+    });
+  }
 
   dom.libFilter.addEventListener("input", () => {
     state.filter = dom.libFilter.value;
@@ -1687,7 +1929,7 @@ function wireEvents() {
 
 function restoreUiState() {
   const tab = location.hash.replace("#", "") || localStorage.getItem(LS.lastTab) || "search";
-  switchTab(["search", "library", "downloads", "playlists"].includes(tab) ? tab : "search");
+  switchTab(["search", "library", "downloads", "shared", "playlists"].includes(tab) ? tab : "search");
 
   dom.recursiveBtn.classList.toggle("active", state.recursive);
   dom.recursiveBtn.setAttribute("aria-pressed", String(state.recursive));
@@ -1717,10 +1959,21 @@ async function init() {
   restoreUiState();
   await refreshOffline();
 
+  // First run on this device: ask who is listening, so each person gets their
+  // own library. Skipped when the server is unreachable or a name is stored.
+  if (!currentUser()) {
+    const picked = await chooseUser().catch(() => null);
+    if (picked) await switchUser(picked, { force: true });
+  }
+
+  updateUserChip();
+  syncScopeButton();
+
   if (state.tab === "library") loadLibrary(state.libPath);
   if (state.tab === "playlists") renderPlaylists();
 
   startJobPolling();
+  refreshShares({ quiet: true }).then(renderShares);
 
   api("/api/health")
     .then((health) => {

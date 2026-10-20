@@ -3,13 +3,14 @@
 // straight to the network, and offline copies are handled by the Cache Storage
 // API from the page (see public/js/offline.js).
 
-const VERSION = "resonance-v10";
+const VERSION = "resonance-v11";
 const SHELL = [
   "/",
   "/index.html",
   "/styles.css",
   "/js/app.js",
   "/js/player.js",
+  "/js/social.js",
   "/js/util.js",
   "/js/offline.js",
   "/manifest.webmanifest",

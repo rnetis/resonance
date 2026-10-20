@@ -1292,3 +1292,80 @@ input[type="range"]:active::-webkit-slider-thumb {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* --------------------------------------------------------------- identity */
+
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 11rem;
+}
+
+.user-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-chip.active {
+  border-color: color-mix(in srgb, var(--accent, #7c5cff) 55%, transparent);
+  color: var(--accent-strong, #c9bcff);
+}
+
+/* Modal list used by the user picker and the share sheet. */
+.chooser-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 46vh;
+  overflow-y: auto;
+  margin: 4px 0 2px;
+}
+
+.chooser-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 13px;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.1));
+  border-radius: 12px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.04));
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chooser-row:hover,
+.chooser-row:focus-visible {
+  border-color: color-mix(in srgb, var(--accent, #7c5cff) 60%, transparent);
+  background: color-mix(in srgb, var(--accent, #7c5cff) 14%, transparent);
+}
+
+.chooser-name {
+  font-weight: 600;
+}
+
+.chooser-meta {
+  font-size: 0.78rem;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.chooser-error {
+  color: #ff9d9d;
+}
+
+.row.muted .row-title,
+.row.muted .row-sub {
+  opacity: 0.6;
+}
+
+@media (max-width: 420px) {
+  .user-chip span {
+    display: none;
+  }
+}

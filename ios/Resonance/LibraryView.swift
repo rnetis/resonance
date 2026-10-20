@@ -17,7 +17,10 @@ struct LibraryView: View {
     @State private var recursive = false
     @State private var durations: [String: Double] = [:]
     @State private var trackToDelete: Track?
+    @State private var trackToShare: Track?
     @State private var showSettings = false
+    /// "library" is this person's own folder; "shared" is the area everyone sees.
+    @State private var scope = "library"
 
     init(path: String = "") {
         _path = State(initialValue: path)
@@ -46,6 +49,9 @@ struct LibraryView: View {
             .task { await load() }
             .sheet(isPresented: $showSettings) {
                 ServerSettingsView(mode: .settings)
+            }
+            .sheet(item: $trackToShare) { track in
+                ShareTargetPicker(track: track)
             }
             .confirmationDialog(
                 deleteTitle,
@@ -139,7 +145,7 @@ struct LibraryView: View {
         } label: {
             TrackRow(
                 track: shown,
-                artworkURL: server.api.coverURL(for: shown.path)?.absoluteString,
+                artworkURL: (server.api.absolute(shown.cover) ?? server.api.coverURL(for: shown.path, scope: shown.scope))?.absoluteString,
                 isCurrent: player.current?.trackPath == shown.path,
                 isSaved: offline.isSaved(shown.path)
             )
@@ -154,10 +160,12 @@ struct LibraryView: View {
             .tint(.resonanceAccent)
         }
         .swipeActions(edge: .trailing) {
-            Button(role: .destructive) {
-                trackToDelete = shown
-            } label: {
-                Label("Delete", systemImage: "trash")
+            if !shown.isFromSharedArea {
+                Button(role: .destructive) {
+                    trackToDelete = shown
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
             }
         }
         .contextMenu {
@@ -174,6 +182,17 @@ struct LibraryView: View {
             } label: {
                 Image(systemName: recursive ? "square.stack.3d.up.fill" : "square.stack.3d.up")
             }
+        }
+
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Button {
+                scope = scope == "shared" ? "library" : "shared"
+                path = ""
+                Task { await load() }
+            } label: {
+                Image(systemName: scope == "shared" ? "person.2.fill" : "person.2")
+            }
+            .accessibilityLabel(scope == "shared" ? "Back to my library" : "Show everyone’s songs")
         }
 
         ToolbarItem(placement: .navigationBarTrailing) {
@@ -212,6 +231,12 @@ struct LibraryView: View {
             Label("Add to playlist", systemImage: "music.note.list")
         }
 
+        if !track.isFromSharedArea {
+            menuButton("Share with…", symbol: "square.and.arrow.up") {
+                trackToShare = track
+            }
+        }
+
         Divider()
 
         if offline.isSaved(track.path) {
@@ -224,15 +249,20 @@ struct LibraryView: View {
             }
         }
 
-        menuButton("Delete from library", symbol: "trash", role: .destructive) {
-            trackToDelete = track
+        if !track.isFromSharedArea {
+            menuButton("Delete from library", symbol: "trash", role: .destructive) {
+                trackToDelete = track
+            }
         }
     }
 
     // MARK: - Derived state
 
     private var navigationTitle: String {
-        path.isEmpty ? "Library" : URL(fileURLWithPath: path).lastPathComponent
+        if scope == "shared" {
+            return path.isEmpty ? "Everyone’s songs" : URL(fileURLWithPath: path).lastPathComponent
+        }
+        return path.isEmpty ? "Library" : URL(fileURLWithPath: path).lastPathComponent
     }
 
     private var sectionTitle: String {
@@ -308,7 +338,7 @@ struct LibraryView: View {
         await MainActor.run { isLoading = true }
 
         do {
-            let loaded = try await server.api.library(path: path, recursive: recursive)
+            let loaded = try await server.api.library(path: path, recursive: recursive, scope: scope)
             await MainActor.run {
                 page = loaded
                 isLoading = false

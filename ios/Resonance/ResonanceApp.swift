@@ -41,11 +41,13 @@ struct RootView: View {
     @State private var tab: Tab = .library
     @State private var showNowPlaying = false
     @State private var showSettings = false
+    @State private var showIdentityPrompt = false
 
     enum Tab: Hashable {
         case search
         case library
         case downloads
+        case shared
         case playlists
     }
 
@@ -61,6 +63,17 @@ struct RootView: View {
             ServerSettingsView(mode: .settings)
         }
         .onAppear { downloads.beginPolling() }
+        .task {
+            // First launch after connecting: ask whose library this is.
+            await server.loadUsers()
+
+            if server.username.isEmpty, !server.users.isEmpty {
+                showIdentityPrompt = true
+            }
+        }
+        .sheet(isPresented: $showIdentityPrompt) {
+            ServerSettingsView(mode: .settings)
+        }
     }
 
     private var tabs: some View {
@@ -76,6 +89,10 @@ struct RootView: View {
             DownloadsView()
                 .tabItem { Label("Downloads", systemImage: "arrow.down.circle") }
                 .tag(Tab.downloads)
+
+            SharedView()
+                .tabItem { Label("Shared", systemImage: "tray.and.arrow.down") }
+                .tag(Tab.shared)
 
             PlaylistsView()
                 .tabItem { Label("Playlists", systemImage: "music.note.list") }

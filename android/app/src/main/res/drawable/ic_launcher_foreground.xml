@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- A single purple quaver inside the 72dp safe zone. -->
+    <path
+        android:fillColor="#7C5CFF"
+        android:pathData="M46,76 m-13,0 a13,9 0 1,0 26,0 a13,9 0 1,0 -26,0 Z" />
+    <path
+        android:fillColor="#7C5CFF"
+        android:pathData="M55,76 L55,30 L62,30 L62,76 Z" />
+    <path
+        android:fillColor="#9A7CFF"
+        android:pathData="M62,30 C77,33 83,46 78,60 C76,45 70,38 62,39 Z" />
+</vector>

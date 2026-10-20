@@ -2,6 +2,7 @@
 // resolution and an optional canvas spectrum visualiser.
 
 import * as offline from "./offline.js";
+import { withUser } from "./social.js";
 
 const STATE_KEY = "resonance.player.v1";
 
@@ -11,9 +12,15 @@ export function trackId(track) {
   return `yt:${track.videoId}`;
 }
 
+/**
+ * The server hands back URLs that already name the right library (?user=… or
+ * ?share=…), which matters because <audio> cannot send the identity header.
+ */
 export function streamUrlFor(track) {
-  if (track?.path) return `/api/stream?path=${encodeURIComponent(track.path)}`;
-  return track?.url || null;
+  if (!track) return null;
+  if (track.url) return track.url;
+  if (track.path) return withUser(`/api/stream?path=${encodeURIComponent(track.path)}`);
+  return null;
 }
 
 export class Player extends EventTarget {

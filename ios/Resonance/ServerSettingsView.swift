@@ -20,11 +20,14 @@ struct ServerSettingsView: View {
     @State private var trust = false
     @State private var loaded = false
     @State private var showForgetConfirm = false
+    @State private var newName = ""
+    @State private var showNewName = false
 
     var body: some View {
         NavigationStack {
             Form {
                 addressSection
+                identitySection
                 connectionSection
                 diagnosticsSection
                 storageSection
@@ -50,6 +53,19 @@ struct ServerSettingsView: View {
                 address = server.serverURL
                 trust = server.trustSelfSigned
                 loaded = true
+
+                if server.isConfigured, server.users.isEmpty {
+                    Task { await server.loadUsers() }
+                }
+            }
+            .alert("Your name", isPresented: $showNewName) {
+                TextField("e.g. sam", text: $newName)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button("Cancel", role: .cancel) {}
+                Button("Use this name") { adopt(newName) }
+            } message: {
+                Text("Letters, digits, dots, dashes and underscores. Each name gets its own library.")
             }
             .confirmationDialog("Forget the server address?", isPresented: $showForgetConfirm, titleVisibility: .visible) {
                 Button("Forget", role: .destructive) {
@@ -95,6 +111,55 @@ struct ServerSettingsView: View {
         } footer: {
             Text("Resonance talks to your own music server — the Node.js + yt-dlp backend in this repository. Enter its address including the port (default 3000). Use http:// for a local server; that is also what allows offline downloads on the device.")
         }
+    }
+
+    /// Everyone on the server has a name; the name decides whose library you see.
+    @ViewBuilder
+    private var identitySection: some View {
+        Section {
+            LabeledContent("Browsing as", value: server.displayUser)
+
+            if server.username.isEmpty {
+                Text("Nobody is chosen yet on this device.")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            }
+
+            ForEach(otherUsers) { user in
+                Button {
+                    adopt(user.name)
+                } label: {
+                    HStack {
+                        Text(user.name)
+                            .foregroundColor(.primary)
+                        Spacer()
+                        Text(user.summary)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+
+            Button {
+                newName = ""
+                showNewName = true
+            } label: {
+                Label("Use a new name…", systemImage: "person.badge.plus")
+            }
+
+            Button("Reload names") {
+                Task { await server.loadUsers() }
+            }
+            .disabled(!server.isConfigured)
+        } header: {
+            Text("Who’s listening")
+        } footer: {
+            Text("Your name selects which library the server shows you, and is the name other people share songs with. It is not a password — it only keeps libraries apart.")
+        }
+    }
+
+    private var otherUsers: [UserSummary] {
+        server.users.filter { $0.name != server.username }
     }
 
     @ViewBuilder
@@ -156,6 +221,20 @@ struct ServerSettingsView: View {
     }
 
     // MARK: - Actions
+
+    private func adopt(_ name: String) {
+        Task {
+            let adopted = await server.adopt(username: name)
+            guard adopted else { return }
+
+            // A different person means a different library: drop the queue.
+            player.clearQueue()
+
+            if mode == .settings {
+                dismiss()
+            }
+        }
+    }
 
     private func connect() {
         Task {
