@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Resonance · Music</title>
+<meta name="description" content="Offline-capable music player: search YouTube, download to your library, and play anywhere.">
+<meta name="theme-color" content="#0b0b0f">
+<meta name="color-scheme" content="dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Resonance">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<!-- Icon sprite -->
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.14v13.72a1 1 0 0 0 1.52.85l11.2-6.86a1 1 0 0 0 0-1.7L9.52 4.29A1 1 0 0 0 8 5.14Z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M7 4.5h3.2a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1Zm6.8 0H17a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-3.2a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1Z"/></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24"><path d="M5 5.6v12.8a1 1 0 0 0 1.53.85l9.4-6.4a1 1 0 0 0 0-1.7l-9.4-6.4A1 1 0 0 0 5 5.6Zm13 .4h2v12h-2z"/></symbol>
+  <symbol id="i-prev" viewBox="0 0 24 24"><path d="M19 5.6v12.8a1 1 0 0 1-1.53.85l-9.4-6.4a1 1 0 0 1 0-1.7l9.4-6.4A1 1 0 0 1 19 5.6ZM6 6h2v12H6z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><path d="M10.5 3a7.5 7.5 0 1 0 4.55 13.46l4.24 4.25a1.2 1.2 0 0 0 1.7-1.7l-4.25-4.24A7.5 7.5 0 0 0 10.5 3Zm0 2.4a5.1 5.1 0 1 1 0 10.2 5.1 5.1 0 0 1 0-10.2Z"/></symbol>
+  <symbol id="i-library" viewBox="0 0 24 24"><path d="M4 4h2.6v16H4V4Zm5.2 0h2.6v16H9.2V4Zm6 1.2 2.5-.7 4 15.1-2.5.7-4-15.1Z"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3a1 1 0 0 1 1 1v8.6l2.8-2.8a1 1 0 0 1 1.4 1.42l-4.5 4.5a1 1 0 0 1-1.4 0l-4.5-4.5A1 1 0 0 1 8.2 9.8L11 12.6V4a1 1 0 0 1 1-1ZM5 19a1 1 0 0 1 1-1h12a1 1 0 0 1 0 2H6a1 1 0 0 1-1-1Z"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M4 6a1 1 0 0 1 1-1h11a1 1 0 0 1 0 2H5a1 1 0 0 1-1-1Zm0 6a1 1 0 0 1 1-1h11a1 1 0 0 1 0 2H5a1 1 0 0 1-1-1Zm0 6a1 1 0 0 1 1-1h7a1 1 0 0 1 0 2H5a1 1 0 0 1-1-1Zm15-13h1v10.5a2.5 2.5 0 1 1-2-2.45V5Z"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.4 5A1 1 0 0 1 7.8 5L12 9.2 16.2 5a1 1 0 1 1 1.4 1.4L13.4 10.6 17.6 14.8a1 1 0 0 1-1.4 1.4L12 12l-4.2 4.2A1 1 0 0 1 6.4 14.8l4.2-4.2L6.4 6.4A1 1 0 0 1 6.4 5Z"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M9.3 5.3a1 1 0 0 1 1.4 0l6 6a1 1 0 0 1 0 1.4l-6 6a1 1 0 0 1-1.4-1.42L14.6 12 9.3 6.7a1 1 0 0 1 0-1.4Z"/></symbol>
+  <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="M17 3.3a1 1 0 0 1 1.4 0l2.3 2.3a1 1 0 0 1 0 1.4L18.4 9.3A1 1 0 0 1 17 7.9V7h-1.2c-1 0-1.6.4-2.4 1.6l-.4.6-1.2-1.8.3-.4C13.2 5.3 14.3 5 15.8 5H17v-.3a1 1 0 0 1 0-1.4ZM6 5h2.6c1.5 0 2.6.3 3.7 1.8l4.2 6.4c.5.8.9 1 1.4 1H19v-.9a1 1 0 0 1 1.4-1.4l2.3 2.3a1 1 0 0 1 0 1.4l-2.3 2.3a1 1 0 0 1-1.4-1.4V16h-1.4c-1.5 0-2.6-.3-3.7-1.8L9.7 7.8c-.5-.8-.9-1-1.4-1H6a1 1 0 0 1 0-2Zm0 12h2.3c1 0 1.6-.4 2.4-1.6l.4-.6 1.2 1.8-.3.4C10.8 18.7 9.7 19 8.3 19H6a1 1 0 0 1 0-2Z"/></symbol>
+  <symbol id="i-repeat" viewBox="0 0 24 24"><path d="M7 4h10a4 4 0 0 1 4 4v2a1 1 0 0 1-2 0V8a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-1a1 1 0 0 1 2 0v1a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8a4 4 0 0 1 4-4Zm9.3 1.3 3.4 3.4a1 1 0 0 1 0 1.4l-3.4 3.4A1 1 0 0 1 15 12.6V9.4a1 1 0 0 1 1.3-.94Z"/></symbol>
+  <symbol id="i-repeat-one" viewBox="0 0 24 24"><path d="M7 4h10a4 4 0 0 1 4 4v2a1 1 0 0 1-2 0V8a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-1a1 1 0 0 1 2 0v1a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8a4 4 0 0 1 4-4Zm5 3.6h1.7V16h-2V10h-1.4l1.7-2.4Z"/></symbol>
+  <symbol id="i-volume" viewBox="0 0 24 24"><path d="M12 3.6a1 1 0 0 1 1 1v14.8a1 1 0 0 1-1.6.8l-4.1-3.1H4.6a1.6 1.6 0 0 1-1.6-1.6v-7a1.6 1.6 0 0 1 1.6-1.6h2.7l4.1-3.1a1 1 0 0 1 1.6.8Zm4.6 1.9a1 1 0 0 1 1.4.1 10 10 0 0 1 0 12.8 1 1 0 1 1-1.5-1.3 8 8 0 0 0 0-10.2 1 1 0 0 0 .1-1.4Zm-2.5 2.7a1 1 0 0 1 1.4.2 6 6 0 0 1 0 7.2 1 1 0 0 1-1.6-1.2 4 4 0 0 0 0-4.8 1 1 0 0 1 .2-1.4Z"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20.3-1.6-1.1C6.2 15 3 12.5 3 8.9A4.9 4.9 0 0 1 7.9 4c1.6 0 3.1.7 4.1 2 1-1.3 2.5-2 4.1-2A4.9 4.9 0 0 1 21 8.9c0 3.6-3.2 6.1-7.4 10.3Z"/></symbol>
+  <symbol id="i-offline" viewBox="0 0 24 24"><path d="M6.4 18.4a1 1 0 0 1 0-1.4l11.6-11.6a1 1 0 1 1 1.4 1.4L7.8 18.4a1 1 0 0 1-1.4 0ZM4.3 9.4a1 1 0 0 1 1.4 0l.5.5a1 1 0 0 1-1.4 1.4l-.5-.5a1 1 0 0 1 0-1.4Zm12.4 0a1 1 0 0 1 1.4-1.4l1.7 1.7a1 1 0 0 1-1.4 1.4l-1.7-1.7ZM8 13.2a1 1 0 0 1 1.4 0l.6.6A1 1 0 1 1 8.6 15l-.6-.6a1 1 0 0 1 0-1.3Zm6.4-4.9a1 1 0 0 1 0 1.4A6 6 0 0 0 12 14.5a1 1 0 0 1-2 0 8 8 0 0 1 3-6.2 1 1 0 0 1 1.4 0ZM12 17a1.3 1.3 0 1 1 0 2.6A1.3 1.3 0 0 1 12 17Z"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M10 4h4a1 1 0 0 1 0 2h-4a1 1 0 0 1 0-2ZM4 7a1 1 0 0 1 1-1h14a1 1 0 0 1 0 2H5a1 1 0 0 1-1-1Zm3.2 4a1 1 0 0 1 1 1v6a1 1 0 0 1-2 0v-6a1 1 0 0 1 1-1Zm4.8 0a1 1 0 0 1 1 1v6a1 1 0 0 1-2 0v-6a1 1 0 0 1 1-1Zm4.8 0a1 1 0 0 1 1 1v6a1 1 0 0 1-2 0v-6a1 1 0 0 1 1-1ZM6 5.5 6.8 19a3 3 0 0 0 3 2.8h4.4a3 3 0 0 0 3-2.8L18 5.5 16 5.3l-.8 13.6a1 1 0 0 1-1 1h-4.4a1 1 0 0 1-1-1L8 5.3 6 5.5Z"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><path d="M12 4.5a1.9 1.9 0 1 1 0 3.8 1.9 1.9 0 0 1 0-3.8Zm0 5.6a1.9 1.9 0 1 1 0 3.8 1.9 1.9 0 0 1 0-3.8Zm0 5.6a1.9 1.9 0 1 1 0 3.8 1.9 1.9 0 0 1 0-3.8Z"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M12 4a8 8 0 0 1 7.4 5H21a1 1 0 0 1 0 2h-4.6a1 1 0 0 1-1-1V5.4a1 1 0 0 1 2 0v1.9A6 6 0 0 0 6.5 9.7a1 1 0 0 1-1.9-.6A8 8 0 0 1 12 4Zm-7.4 9H8a1 1 0 0 1 1 1v4.6a1 1 0 0 1-2 0v-1.9a6 6 0 0 0 10.5-2.4 1 1 0 0 1 1.9.6A8 8 0 0 1 4.6 13Z"/></symbol>
+  <symbol id="i-install" viewBox="0 0 24 24"><path d="M12 3a1 1 0 0 1 1 1v7.6l2.3-2.3a1 1 0 0 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4A1 1 0 0 1 8.7 9.3L11 11.6V4a1 1 0 0 1 1-1ZM5 16a1 1 0 0 1 1 1v1h12v-1a1 1 0 0 1 2 0v1.6A1.4 1.4 0 0 1 18.6 20H5.4A1.4 1.4 0 0 1 4 18.6V17a1 1 0 0 1 1-1Z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 4a1 1 0 0 1 1 1v6h6a1 1 0 0 1 0 2h-6v6a1 1 0 0 1-2 0v-6H5a1 1 0 0 1 0-2h6V5a1 1 0 0 1 1-1Z"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h3.2c.7 0 1.4.3 1.9.8l1 1.2h4.9A2.5 2.5 0 0 1 20 8.5v9A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5v-11Zm2.5-.5a.5.5 0 0 0-.5.5v11c0 .3.2.5.5.5h11a.5.5 0 0 0 .5-.5v-9a.5.5 0 0 0-.5-.5h-6l-.9-1.2A.5.5 0 0 0 9.7 6H6.5Z"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M14.7 5.3a1 1 0 0 1 0 1.4L9.4 12l5.3 5.3a1 1 0 0 1-1.4 1.4l-6-6a1 1 0 0 1 0-1.4l6-6a1 1 0 0 1 1.4 0Z"/></symbol>
+  <symbol id="i-music" viewBox="0 0 24 24"><path d="M20 4.6v10.9a3.6 3.6 0 1 1-2-3.2V8.2l-8 1.9v7.6a3.6 3.6 0 1 1-2-3.2V7.6a1 1 0 0 1 .8-1l10-2.3a1 1 0 0 1 1.2 1Z"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><rect x="3" y="7" width="9" height="2" rx="1"/><rect x="15" y="7" width="6" height="2" rx="1"/><circle cx="13.5" cy="8" r="2.2"/><rect x="3" y="11" width="4" height="2" rx="1"/><rect x="10" y="11" width="11" height="2" rx="1"/><circle cx="8.5" cy="12" r="2.2"/><rect x="3" y="15" width="10" height="2" rx="1"/><rect x="16" y="15" width="5" height="2" rx="1"/><circle cx="14.5" cy="16" r="2.2"/></symbol>
+</svg>
+
+<div id="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark"><svg class="i"><use href="#i-music"/></svg></span>
+      <span class="brand-text">Resonance</span>
+    </div>
+    <div class="topbar-actions">
+      <span class="pill offline-pill" id="netBadge" hidden><svg class="i"><use href="#i-offline"/></svg>Offline</span>
+      <button class="btn ghost small" id="installBtn" hidden><svg class="i"><use href="#i-install"/></svg>Install</button>
+      <button class="icon-btn" id="nativeSettingsBtn" hidden title="Server settings"><svg class="i"><use href="#i-settings"/></svg></button>
+      <button class="icon-btn" id="refreshBtn" title="Refresh"><svg class="i"><use href="#i-refresh"/></svg></button>
+    </div>
+  </header>
+
+  <main id="views">
+    <!-- Search -->
+    <section class="view" id="view-search">
+      <form class="search-form" id="searchForm" role="search">
+        <svg class="i search-icon"><use href="#i-search"/></svg>
+        <input id="searchInput" type="search" name="q" placeholder="Search YouTube for songs…" autocomplete="off" enterkeyhint="search" aria-label="Search YouTube">
+        <button class="btn primary" type="submit">Search</button>
+      </form>
+      <div class="chips" id="searchChips"></div>
+      <div class="status" id="searchStatus" hidden></div>
+      <ul class="list" id="searchResults"></ul>
+    </section>
+
+    <!-- Library -->
+    <section class="view" id="view-library" hidden>
+      <div class="lib-toolbar">
+        <div class="crumbs" id="libCrumbs"></div>
+        <button class="btn ghost small" id="recursiveBtn" aria-pressed="false">All songs</button>
+      </div>
+      <div class="lib-actions">
+        <button class="btn soft small" id="playAllBtn"><svg class="i"><use href="#i-play"/></svg>Play all</button>
+        <button class="btn soft small" id="shuffleAllBtn"><svg class="i"><use href="#i-shuffle"/></svg>Shuffle</button>
+        <input class="filter-input" id="libFilter" type="search" placeholder="Filter…" aria-label="Filter library">
+      </div>
+      <div class="status" id="libraryStatus" hidden></div>
+      <ul class="list" id="libraryList"></ul>
+    </section>
+
+    <!-- Downloads -->
+    <section class="view" id="view-downloads" hidden>
+      <div class="view-head">
+        <h2>Downloads</h2>
+        <button class="btn ghost small" id="clearJobsBtn">Clear finished</button>
+      </div>
+      <div class="status" id="downloadsStatus" hidden></div>
+      <ul class="list" id="downloadList"></ul>
+    </section>
+
+    <!-- Playlists -->
+    <section class="view" id="view-playlists" hidden>
+      <div class="view-head">
+        <h2>Playlists</h2>
+        <button class="btn soft small" id="newPlaylistBtn"><svg class="i"><use href="#i-plus"/></svg>New</button>
+      </div>
+      <ul class="list" id="playlistList"></ul>
+    </section>
+  </main>
+
+  <!-- Mini player -->
+  <div class="mini" id="mini" hidden>
+    <div class="mini-progress"><span id="miniProgressBar"></span></div>
+    <div class="mini-inner" id="miniExpand">
+      <span class="cover cover-sm" id="miniCoverWrap">
+        <img id="miniCover" alt="" decoding="async">
+        <svg class="i placeholder"><use href="#i-music"/></svg>
+      </span>
+      <span class="mini-text">
+        <span class="mini-title" id="miniTitle">Nothing playing</span>
+        <span class="mini-sub" id="miniArtist"></span>
+      </span>
+      <span class="mini-controls">
+        <button class="icon-btn" id="miniPlay" aria-label="Play or pause"><svg class="i"><use href="#i-play"/></svg></button>
+        <button class="icon-btn" id="miniNext" aria-label="Next track"><svg class="i"><use href="#i-next"/></svg></button>
+      </span>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <nav class="tabbar" id="tabbar">
+    <button class="tab" data-tab="search"><svg class="i"><use href="#i-search"/></svg><span>Search</span></button>
+    <button class="tab" data-tab="library"><svg class="i"><use href="#i-library"/></svg><span>Library</span></button>
+    <button class="tab" data-tab="downloads"><svg class="i"><use href="#i-download"/></svg><span>Downloads</span><em class="tab-badge" id="downloadsBadge" hidden></em></button>
+    <button class="tab" data-tab="playlists"><svg class="i"><use href="#i-list"/></svg><span>Playlists</span></button>
+  </nav>
+</div>
+
+<!-- Now playing sheet -->
+<div class="sheet" id="sheet" hidden aria-modal="true" role="dialog" aria-label="Now playing">
+  <div class="sheet-backdrop" id="sheetBackdrop"></div>
+  <div class="sheet-panel">
+    <header class="sheet-head">
+      <button class="icon-btn" id="sheetClose" aria-label="Close"><svg class="i down"><use href="#i-chevron"/></svg></button>
+      <div class="sheet-head-title"><span class="eyebrow">Now playing</span><strong id="sheetSource">—</strong></div>
+      <button class="icon-btn" id="sheetQueueBtn" aria-label="Show queue"><svg class="i"><use href="#i-list"/></svg></button>
+    </header>
+
+    <div class="sheet-art" id="sheetArt">
+      <img id="sheetCover" alt="" decoding="async">
+      <svg class="i placeholder"><use href="#i-music"/></svg>
+      <canvas id="visualizer" aria-hidden="true"></canvas>
+    </div>
+
+    <div class="sheet-meta">
+      <h3 id="sheetTitle">—</h3>
+      <p id="sheetArtist">—</p>
+    </div>
+
+    <div class="seek">
+      <input type="range" id="seekBar" min="0" max="1000" value="0" step="1" aria-label="Seek">
+      <div class="seek-times"><span id="seekCurrent">0:00</span><span id="seekTotal">0:00</span></div>
+    </div>
+
+    <div class="controls">
+      <button class="icon-btn" id="shuffleBtn" aria-label="Shuffle"><svg class="i"><use href="#i-shuffle"/></svg></button>
+      <button class="icon-btn big" id="prevBtn" aria-label="Previous"><svg class="i"><use href="#i-prev"/></svg></button>
+      <button class="play-btn" id="playBtn" aria-label="Play or pause"><svg class="i"><use href="#i-play"/></svg></button>
+      <button class="icon-btn big" id="nextBtn" aria-label="Next"><svg class="i"><use href="#i-next"/></svg></button>
+      <button class="icon-btn" id="repeatBtn" aria-label="Repeat"><svg class="i"><use href="#i-repeat"/></svg></button>
+    </div>
+
+    <div class="extras">
+      <div class="volume">
+        <svg class="i"><use href="#i-volume"/></svg>
+        <input type="range" id="volumeBar" min="0" max="100" value="100" aria-label="Volume">
+      </div>
+      <div class="extra-buttons">
+        <button class="btn ghost small" id="offlineToggleBtn"><svg class="i"><use href="#i-download"/></svg><span id="offlineToggleLabel">Save offline</span></button>
+        <button class="btn ghost small" id="playlistAddBtn"><svg class="i"><use href="#i-plus"/></svg>Playlist</button>
+      </div>
+    </div>
+
+    <div class="queue" id="queuePanel" hidden>
+      <div class="queue-head"><strong>Queue</strong><span id="queueCount"></span></div>
+      <ul class="list" id="queueList"></ul>
+    </div>
+  </div>
+</div>
+
+<div class="menu" id="menu" hidden role="menu"></div>
+<div class="toast" id="toast" hidden></div>
+<div class="modal" id="modal" hidden></div>
+
+<template id="trackTemplate">
+  <li class="row track-row">
+    <button class="row-main">
+      <span class="cover">
+        <img alt="" decoding="async">
+        <svg class="i placeholder"><use href="#i-music"/></svg>
+        <span class="playing-bars" hidden><i></i><i></i><i></i></span>
+      </span>
+      <span class="row-text">
+        <span class="row-title"></span>
+        <span class="row-sub"></span>
+      </span>
+    </button>
+    <span class="row-meta"></span>
+    <button class="icon-btn row-action" aria-label="More actions"></button>
+  </li>
+</template>
+
+<template id="folderTemplate">
+  <li class="row folder-row">
+    <button class="row-main">
+      <span class="cover"><svg class="i"><use href="#i-folder"/></svg></span>
+      <span class="row-text"><span class="row-title"></span><span class="row-sub"></span></span>
+    </button>
+    <span class="row-meta"></span>
+    <svg class="i chev"><use href="#i-chevron"/></svg>
+  </li>
+</template>
+
+<template id="jobTemplate">
+  <li class="job">
+    <div class="job-head">
+      <span class="cover cover-sm"><img alt="" decoding="async"><svg class="i placeholder"><use href="#i-music"/></svg></span>
+      <div class="job-text">
+        <span class="row-title"></span>
+        <span class="row-sub"></span>
+      </div>
+      <div class="job-actions"></div>
+    </div>
+    <div class="job-bar"><span></span></div>
+  </li>
+</template>
+
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>

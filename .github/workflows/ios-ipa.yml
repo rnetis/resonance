@@ -1,0 +1,108 @@
+name: iOS IPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Marketing version override (e.g. 1.0.1). Leave empty to use ios/project.yml."
+        required: false
+        default: ""
+  push:
+    branches: [main]
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios-ipa.yml"
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ios-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-ipa:
+    name: Build unsigned IPA
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: |
+          xcodegen generate --spec project.yml
+          ls -1
+
+      - name: Override marketing version
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version != '' }}
+        working-directory: ios
+        run: |
+          sed -i '' "s/^    MARKETING_VERSION: .*/    MARKETING_VERSION: \"${{ github.event.inputs.version }}\"/" project.yml
+          grep MARKETING_VERSION project.yml
+
+      - name: Archive (no code signing)
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Resonance.xcodeproj \
+            -scheme Resonance \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Resonance.xcarchive" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_ENTITLEMENTS="" \
+            archive
+
+      - name: Package IPA
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/Resonance.xcarchive/Products/Applications/Resonance.app"
+          test -d "$APP" || { echo "archive did not produce Resonance.app"; exit 1; }
+
+          mkdir -p "$RUNNER_TEMP/Payload"
+          cp -R "$APP" "$RUNNER_TEMP/Payload/"
+
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Info.plist"
+          lipo -info "$APP/Resonance"
+
+          cd "$RUNNER_TEMP"
+          zip -qry Resonance.ipa Payload
+          shasum -a 256 Resonance.ipa > Resonance.ipa.sha256
+          cat Resonance.ipa.sha256
+          unzip -l Resonance.ipa | head -12
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: resonance-ios-unsigned-ipa
+          path: |
+            ${{ runner.temp }}/Resonance.ipa
+            ${{ runner.temp }}/Resonance.ipa.sha256
+          if-no-files-found: error
+          retention-days: 60
+
+      - name: Attach IPA to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ runner.temp }}/Resonance.ipa
+            ${{ runner.temp }}/Resonance.ipa.sha256
+          generate_release_notes: true
