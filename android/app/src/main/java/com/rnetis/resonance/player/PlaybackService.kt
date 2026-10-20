@@ -130,8 +130,9 @@ class PlaybackService : MediaSessionService() {
 }
 
 /**
- * Picks the right MediaSource per item: the server's chunked playlist has no `.m3u8` suffix,
- * so extension sniffing cannot be trusted - anything whose URI contains `/api/playlist` is
+ * Picks the right MediaSource per item: the playlist route is matched by path (not by
+ * extension, so a server that serves it without the `.m3u8` suffix still works) - anything
+ * whose URI contains `/api/playlist` is
  * built as an explicit HlsMediaSource, everything else (progressive audio, offline files)
  * goes through the ordinary factory.
  */

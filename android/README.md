@@ -42,9 +42,9 @@ the server, which is why the app works with nothing but an address and a usernam
 - **Playback** — a Media3 `MediaSessionService` owns an `ExoPlayer` with the full track list
   queued; a persistent bottom bar expands into a full Now Playing screen with seek, shuffle
   and repeat. Chunked (HLS) playback is preferred: any track with an `hls` field is built as an
-  explicit `HlsMediaSource` (the playlist URL has no `.m3u8` suffix, so extension sniffing is
-  not used); when the playlist is unavailable the service falls back to the progressive
-  `url`. Offline copies play from their `file://` path. MediaSession metadata (title, artist,
+  explicit `HlsMediaSource` (matched on `/api/playlist` rather than sniffing the `.m3u8`
+  extension, so it also works with a server that omits the suffix); when the playlist is
+  unavailable the service falls back to the progressive `url` carried in the item's mediaId. Offline copies play from their `file://` path. MediaSession metadata (title, artist,
   artwork URI) drives the notification and lock screen.
 - **Settings** — change server/username later, see the full `/api/health` diagnostics, inspect
   the player connection and clear the offline copies from the device.
@@ -115,16 +115,16 @@ priority over the query string.
 
 ### Chunked playback
 
-`GET /api/playlist` returns an HLS media playlist whose segment lines are rewritten as
-server-relative paths (`/api/chunk?key=…&name=seg00000.ts`) and which has no `.m3u8` suffix
-in the URL. The app therefore:
+`GET /api/playlist.m3u8` (the same handler also answers on `/api/playlist`) returns an HLS
+media playlist whose segment lines are **absolute** URLs (`http://host:port/api/chunk?key=…`
+— the host is whatever the device reached the server on, so it stays correct over the LAN).
+The app therefore:
 
-1. expands the server's `hls` field to an absolute URL (`http://host:port/api/playlist?path=…`),
-2. builds that item with an explicit `HlsMediaSource` (via `HlsMediaSource.Factory`), never by
-   sniffing the extension, and
-3. lets ExoPlayer resolve the segment URIs against the absolute playlist URL — media3's
-   `HlsMediaChunk` resolves them with `UriUtil.resolveToUri` (RFC 3986), so a rooted
-   `/api/chunk…` reference resolves to `http://host:port/api/chunk…` correctly.
+1. expands the server's `hls` field to a full URL (`http://host:port/api/playlist.m3u8?…`),
+2. builds that item with an explicit `HlsMediaSource` (via `HlsMediaSource.Factory`), matched
+   on the `/api/playlist` path rather than the extension, and
+3. lets ExoPlayer fetch each `seg*.ts` chunk (`video/mp2t`, Range-capable) as it plays, so
+   audio starts after the first ~4 s chunk instead of after the whole file.
 
 If the playlist request fails (the server answers 503 when ffmpeg is missing, or 504 while the
 first segment is still being written) the service swaps that item for its progressive `url` and
@@ -142,3 +142,7 @@ resumes at the same position.
   on first launch.
 - Search results cannot be streamed from YouTube directly — the server has to download them
   first, which is why `+` starts a job instead of playing.
+- **The CI APK is debug-signed with a keystore generated on each build**, so an update
+  installed over an earlier build is rejected (`App not installed`) until the old one is
+  uninstalled. For a stable signature, build locally with your own keystore and
+  `gradle assembleRelease`.
