@@ -142,10 +142,11 @@ and the SPA fallback.
 
 ## iOS app
 
-`ios/` builds a native iOS shell around the web player: SwiftUI for setup/settings plus a
-full-screen `WKWebView` pointed at **your** server, with `UIBackgroundModes: audio` +
-`AVAudioSession .playback` so playback survives the screen locking. In-app, the sliders
-button in the top bar (visible only in the native shell) opens the server address form.
+`ios/` is a **native SwiftUI client** for the server API (no web view): search, downloads
+with live progress, library browsing, playlists, on-device offline copies, and `AVPlayer`
+playback with lock-screen controls. Playback keeps going when the screen locks
+(`AVAudioSession .playback` configured once at launch + `UIBackgroundModes: audio`), and
+"save on device" works over plain HTTP because it does not need a service worker.
 
 ```bash
 # CI (no Mac required): Actions → "iOS IPA" → Run workflow
@@ -156,9 +157,8 @@ brew install xcodegen && ./ios/build-ipa.sh
 
 The IPA is unsigned by design — sideload it with AltStore, Sideloadly or TrollStore, which
 re-sign it for your device. On launch, enter the address your server prints (e.g.
-`192.168.1.20:3130`). Offline playback inside the app needs HTTPS for the server, because
-service workers and Cache Storage require a secure context. Details, secrets-based signing
-and troubleshooting: [`ios/README.md`](ios/README.md).
+`192.168.1.20:3130`). Details, endpoint map and troubleshooting:
+[`ios/README.md`](ios/README.md).
 
 ## Troubleshooting
 
