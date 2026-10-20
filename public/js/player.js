@@ -24,9 +24,12 @@ export class Player extends EventTarget {
     this.audio.preload = "metadata";
     this.audio.setAttribute("playsinline", "");
 
-    // iOS suspends media that is not part of the document, so the element lives
-    // in the DOM (visually hidden, non-interactive) on every platform.
-    this.audio.style.cssText = "position:absolute;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none";
+    // iOS suspends media that is not part of the document, so the element lives in
+    // the DOM. It stays inside the viewport (1px, nearly transparent) rather than
+    // being pushed off-screen, because engines treat off-screen/hidden media
+    // differently from visible media.
+    this.audio.style.cssText =
+      "position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0.01;pointer-events:none;z-index:-1";
 
     if (document.body) {
       document.body.append(this.audio);
@@ -235,7 +238,9 @@ export class Player extends EventTarget {
       await this.audio.play();
       await this._resumeAudioContext();
     } catch (error) {
-      if (error?.name !== "AbortError") {
+      // A blocked autoplay is not a failure the user can act on (and iOS answers
+      // programmatic resumes that way after an interruption).
+      if (error?.name !== "AbortError" && error?.name !== "NotAllowedError") {
         this.emit("error", { message: error?.message || "Playback failed", track: this.current });
       }
     }

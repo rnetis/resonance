@@ -88,13 +88,16 @@ data* and *Forget server address*.
   not cached. Put the server behind HTTPS (Caddy, nginx, a tunnel, or Tailscale certs) to
   get offline playback inside the app. `Trust self-signed certificate` makes a self-signed
   HTTPS server usable.
-- **Background audio** is the shell's job, and it needs all of these together:
-  `UIBackgroundModes: audio` in `Info.plist`, `AVAudioSession .playback` **activated when
-  playback starts** (not at launch), and a `MPRemoteCommandCenter` / `MPNowPlayingInfoCenter`
-  entry — registering remote commands is what makes iOS keep treating the app as the
-  active media app instead of suspending it. The page reports its state through
-  `window.__resonanceNative.onPlayback(...)`, and remote buttons call back in through
+- **Background audio** is the shell's job: `UIBackgroundModes: audio` in `Info.plist`
+  plus a single `AVAudioSession` setup (`.playback` + `setActive(true)`) **at launch**.
+  The session is never reconfigured while the page is playing — changing the category of
+  a live session interrupts WebKit's audio pipeline and makes it stop the element, which
+  looks like "playback pauses by itself". WebKit activates the session for HTML media on
+  its own; the shell only adds the lock-screen entry: the page reports state through
+  `window.__resonanceNative.onPlayback(...)` and remote buttons come back in through
   `window.__resonanceRemote.command('next' | 'previous' | 'play' | 'pause' | 'seek' …)`.
+  The Diagnostics panel shows `setups:` — it must stay `1` while you play; anything
+  higher means the session is being touched during playback.
 - **No Web Audio in this app.** The page's spectrum visualiser would re-route the
   `<audio>` element through an `AudioContext`, which iOS suspends when the app is
   backgrounded — playback goes silent while the track keeps running. The shell injects
