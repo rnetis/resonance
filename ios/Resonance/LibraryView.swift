@@ -165,8 +165,8 @@ struct LibraryView: View {
         }
     }
 
-    @ViewBuilder
-    private var toolbarContent: some View {
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .navigationBarLeading) {
             Button {
                 recursive.toggle()
