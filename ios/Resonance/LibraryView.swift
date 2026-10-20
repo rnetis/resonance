@@ -19,121 +19,37 @@ struct LibraryView: View {
     @State private var trackToDelete: Track?
     @State private var showSettings = false
 
+    init(path: String = "") {
+        _path = State(initialValue: path)
+    }
+
     var body: some View {
         NavigationStack {
             List {
-                if let errorMessage {
-                    Section { ErrorBanner(message: errorMessage) }
-                }
-
-                if isLoading && page == nil {
-                    HStack {
-                        Spacer()
-                        ProgressView("Loading library…")
-                        Spacer()
-                    }
-                }
+                errorSection
+                loadingSection
 
                 if let page {
-                    if !page.folders.isEmpty && !recursive {
-                        Section("Folders") {
-                            ForEach(page.folders) { folder in
-                                NavigationLink(value: folder.path) {
-                                    FolderRow(folder: folder)
-                                }
-                            }
-                        }
-                    }
-
-                    Section {
-                        if visibleTracks.isEmpty {
-                            EmptyStateView(
-                                symbol: filter.isEmpty ? "music.note.list" : "line.3.horizontal.decrease.circle",
-                                title: filter.isEmpty ? "No music here yet" : "No matches",
-                                message: filter.isEmpty
-                                    ? "Search for a song and tap it to download it into this folder."
-                                    : "Try a different filter."
-                            )
-                        } else {
-                            ForEach(visibleTracks) { track in
-                                let shown = resolved(track)
-                                Button {
-                                    play(shown)
-                                } label: {
-                                    TrackRow(
-                                        track: shown,
-                                        artworkURL: server.api.coverURL(for: shown.path)?.absoluteString,
-                                        isCurrent: player.current?.trackPath == shown.path,
-                                        isSaved: offline.isSaved(shown.path)
-                                    )
-                                }
-                                .buttonStyle(.plain)
-                                .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                    Button {
-                                        play(track)
-                                    } label: {
-                                        Label("Play", systemImage: "play.fill")
-                                    }
-                                    .tint(.resonanceAccent)
-                                }
-                                .swipeActions(edge: .trailing) {
-                                    Button(role: .destructive) {
-                                        trackToDelete = track
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
-                                }
-                                .contextMenu { menu(for: track) }
-                            }
-                        }
-                    } header: {
-                        Text(recursive ? "All songs (\(visibleTracks.count))" : "Songs (\(visibleTracks.count))")
-                    }
+                    foldersSection(page)
+                    tracksSection
                 }
             }
             .listStyle(.insetGrouped)
             .miniPlayerInset(player.current != nil)
-            .navigationTitle(path.isEmpty ? "Library" : URL(fileURLWithPath: path).lastPathComponent)
+            .navigationTitle(navigationTitle)
             .navigationDestination(for: String.self) { destination in
                 LibraryView(path: destination)
             }
             .searchable(text: $filter, prompt: "Filter tracks")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        recursive.toggle()
-                        Task { await load() }
-                    } label: {
-                        Label(recursive ? "All songs" : "This folder", systemImage: recursive ? "square.stack.3d.up.fill" : "square.stack.3d.up")
-                    }
-                }
-
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Menu {
-                        Button("Play all", systemImage: "play.fill") {
-                            playAll(shuffled: false)
-                        }
-                        Button("Shuffle all", systemImage: "shuffle") {
-                            playAll(shuffled: true)
-                        }
-                        .disabled(visibleTracks.isEmpty)
-                        Divider()
-                        Button("Server settings", systemImage: "slider.horizontal.3") {
-                            showSettings = true
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                    }
-                }
-            }
+            .toolbar { toolbarContent }
             .refreshable { await load() }
             .task { await load() }
             .sheet(isPresented: $showSettings) {
                 ServerSettingsView(mode: .settings)
             }
             .confirmationDialog(
-                "Delete “\(trackToDelete?.title ?? "")”?",
-                isPresented: Binding(get: { trackToDelete != nil }, set: { if !$0 { trackToDelete = nil } }),
+                deleteTitle,
+                isPresented: deleteDialogBinding,
                 titleVisibility: .visible
             ) {
                 Button("Delete from library", role: .destructive) {
@@ -149,7 +65,128 @@ struct LibraryView: View {
         }
     }
 
-    // MARK: - Actions
+    // MARK: - Sections
+
+    @ViewBuilder
+    private var errorSection: some View {
+        if let errorMessage {
+            Section {
+                ErrorBanner(message: errorMessage)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var loadingSection: some View {
+        if isLoading && page == nil {
+            HStack {
+                Spacer()
+                ProgressView("Loading library…")
+                Spacer()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func foldersSection(_ page: LibraryPage) -> some View {
+        if !page.folders.isEmpty && !recursive {
+            Section("Folders") {
+                ForEach(page.folders) { folder in
+                    NavigationLink(value: folder.path) {
+                        FolderRow(folder: folder)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var tracksSection: some View {
+        Section {
+            if visibleTracks.isEmpty {
+                emptyState
+            } else {
+                ForEach(visibleTracks) { track in
+                    trackRow(track)
+                }
+            }
+        } header: {
+            Text(sectionTitle)
+        }
+    }
+
+    private var emptyState: EmptyStateView {
+        if filter.trimmingCharacters(in: .whitespaces).isEmpty {
+            return EmptyStateView(
+                symbol: "music.note.list",
+                title: "No music here yet",
+                message: "Search for a song and tap it to download it into this folder."
+            )
+        }
+
+        return EmptyStateView(
+            symbol: "line.3.horizontal.decrease.circle",
+            title: "No matches",
+            message: "Try a different filter."
+        )
+    }
+
+    private func trackRow(_ track: Track) -> some View {
+        let shown = resolved(track)
+
+        return Button {
+            play(shown)
+        } label: {
+            TrackRow(
+                track: shown,
+                artworkURL: server.api.coverURL(for: shown.path)?.absoluteString,
+                isCurrent: player.current?.trackPath == shown.path,
+                isSaved: offline.isSaved(shown.path)
+            )
+        }
+        .buttonStyle(.plain)
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            Button {
+                play(shown)
+            } label: {
+                Label("Play", systemImage: "play.fill")
+            }
+            .tint(.resonanceAccent)
+        }
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive) {
+                trackToDelete = shown
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+        .contextMenu {
+            menu(for: shown)
+        }
+    }
+
+    @ViewBuilder
+    private var toolbarContent: some View {
+        ToolbarItem(placement: .navigationBarLeading) {
+            Button {
+                recursive.toggle()
+                Task { await load() }
+            } label: {
+                Image(systemName: recursive ? "square.stack.3d.up.fill" : "square.stack.3d.up")
+            }
+        }
+
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Menu {
+                menuButton("Play all", symbol: "play.fill") { playAll(shuffled: false) }
+                menuButton("Shuffle all", symbol: "shuffle") { playAll(shuffled: true) }
+                Divider()
+                menuButton("Server settings", symbol: "slider.horizontal.3") { showSettings = true }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+        }
+    }
 
     @ViewBuilder
     private func menu(for track: Track) -> some View {
@@ -169,7 +206,7 @@ struct LibraryView: View {
             }
             menuButton("New playlist", symbol: "plus") {
                 let playlist = playlists.create(named: track.title)
-                playlists.add(PlaylistEntry(track: track), to: playlist.id)
+                _ = playlists.add(PlaylistEntry(track: track), to: playlist.id)
             }
         } label: {
             Label("Add to playlist", systemImage: "music.note.list")
@@ -191,6 +228,41 @@ struct LibraryView: View {
             trackToDelete = track
         }
     }
+
+    // MARK: - Derived state
+
+    private var navigationTitle: String {
+        path.isEmpty ? "Library" : URL(fileURLWithPath: path).lastPathComponent
+    }
+
+    private var sectionTitle: String {
+        recursive ? "All songs (\(visibleTracks.count))" : "Songs (\(visibleTracks.count))"
+    }
+
+    private var deleteTitle: String {
+        "Delete “\(trackToDelete?.title ?? "")”?"
+    }
+
+    private var deleteDialogBinding: Binding<Bool> {
+        Binding(
+            get: { trackToDelete != nil },
+            set: { if !$0 { trackToDelete = nil } }
+        )
+    }
+
+    private var visibleTracks: [Track] {
+        guard let page else { return [] }
+
+        let needle = filter.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !needle.isEmpty else { return page.tracks }
+
+        return page.tracks.filter { track in
+            let fields = [track.title, track.artist, track.album, track.name].compactMap { $0 }
+            return fields.contains { $0.lowercased().contains(needle) }
+        }
+    }
+
+    // MARK: - Actions
 
     private func playable(_ track: Track) -> PlayableTrack {
         offline.playable(track, client: server.api)
@@ -230,18 +302,6 @@ struct LibraryView: View {
         }
     }
 
-    private var visibleTracks: [Track] {
-        guard let page else { return [] }
-        let needle = filter.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !needle.isEmpty else { return page.tracks }
-
-        return page.tracks.filter { track in
-            [track.title, track.artist, track.album, track.name]
-                .compactMap { $0 }
-                .contains { $0.lowercased().contains(needle) }
-        }
-    }
-
     // MARK: - Data
 
     private func load() async {
@@ -254,7 +314,7 @@ struct LibraryView: View {
                 isLoading = false
                 errorMessage = nil
             }
-            await probeMissingDurations()
+            await probeMissingDurations(in: loaded)
         } catch {
             await MainActor.run {
                 isLoading = false
@@ -264,22 +324,24 @@ struct LibraryView: View {
     }
 
     /// Durations of freshly downloaded files are only known after ffprobe has run.
-    private func probeMissingDurations() async {
-        guard let page else { return }
-
+    private func probeMissingDurations(in page: LibraryPage) async {
         let missing = page.tracks
             .filter { $0.duration == nil && durations[$0.path] == nil }
             .prefix(12)
 
         for track in missing {
-            guard let response = try? await server.api.probeDuration(track.path), let seconds = response.duration else { continue }
-            await MainActor.run { durations[track.path] = seconds }
+            let response = try? await server.api.probeDuration(track.path)
+
+            if let seconds = response?.duration {
+                await MainActor.run { durations[track.path] = seconds }
+            }
         }
     }
 
     /// Applies a probed duration without mutating the decoded page.
     private func resolved(_ track: Track) -> Track {
         guard track.duration == nil, let seconds = durations[track.path] else { return track }
+
         var copy = track
         copy.duration = seconds
         return copy
