@@ -14,6 +14,7 @@ struct ResonanceWebView: UIViewRepresentable {
     let onLoaded: () -> Void
     let onError: (String) -> Void
     let onOpenSettings: () -> Void
+    let onPlayback: (PlaybackReport) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -28,13 +29,24 @@ struct ResonanceWebView: UIViewRepresentable {
         configuration.mediaTypesRequiringUserActionForPlayback = []
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
 
-        // Native bridge: the web app only shows its settings button when this exists.
+        // Native bridge: the web app only shows its settings button when this
+        // exists, reports playback so the shell can own the audio session and the
+        // lock screen, and disables its Web Audio visualiser (an AudioContext is
+        // suspended in the background on iOS, which would silence playback).
         let bridge = WKUserScript(
             source: """
             window.__resonanceNative = {
               platform: 'ios',
+              visualizer: false,
               openSettings: function () {
                 try { window.webkit.messageHandlers.resonance.postMessage({ type: 'openSettings' }); } catch (e) {}
+              },
+              onPlayback: function (payload) {
+                try {
+                  var message = { type: 'playback' };
+                  for (var key in payload) { message[key] = payload[key]; }
+                  window.webkit.messageHandlers.resonance.postMessage(message);
+                } catch (e) {}
               }
             };
             """,
@@ -59,6 +71,7 @@ struct ResonanceWebView: UIViewRepresentable {
 
         context.coordinator.trustSelfSigned = trustSelfSigned
         context.coordinator.load(urlString: urlString, reloadToken: reloadToken, in: webView)
+        context.coordinator.attachShell(to: webView)
 
         return webView
     }
@@ -66,6 +79,7 @@ struct ResonanceWebView: UIViewRepresentable {
     func updateUIView(_ webView: WKWebView, context: Context) {
         context.coordinator.parent = self
         context.coordinator.trustSelfSigned = trustSelfSigned
+        NowPlayingController.shared.trustSelfSigned = trustSelfSigned
 
         if context.coordinator.loadedURL != urlString || context.coordinator.loadedToken != reloadToken {
             context.coordinator.load(urlString: urlString, reloadToken: reloadToken, in: webView)
@@ -73,6 +87,7 @@ struct ResonanceWebView: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
+        coordinator.detachShell()
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "resonance")
         webView.navigationDelegate = nil
         webView.uiDelegate = nil
@@ -194,6 +209,48 @@ struct ResonanceWebView: UIViewRepresentable {
 
         // MARK: - Native bridge
 
+        /// Connects the lock-screen / remote-control plumbing to this web view.
+        func attachShell(to webView: WKWebView) {
+            NowPlayingController.shared.trustSelfSigned = parent.trustSelfSigned
+            NowPlayingController.shared.configureRemoteCommands(trustedHost: URL(string: parent.urlString)?.host)
+
+            NowPlayingController.shared.sendCommand = { [weak webView] name, value in
+                guard let webView else { return }
+                let argument = value.map { String(format: "%.3f", $0) } ?? "undefined"
+                let script = "window.__resonanceRemote && window.__resonanceRemote.command('\(name)', \(argument));"
+                DispatchQueue.main.async {
+                    webView.evaluateJavaScript(script, completionHandler: nil)
+                }
+            }
+
+            AudioSessionController.shared.onShouldResume = { [weak webView] in
+                guard let webView else { return }
+                DispatchQueue.main.async {
+                    webView.evaluateJavaScript(
+                        "window.__resonanceRemote && window.__resonanceRemote.command('play');",
+                        completionHandler: nil
+                    )
+                }
+            }
+
+            AudioSessionController.shared.onMediaServicesReset = { [weak webView] in
+                guard let webView else { return }
+                DispatchQueue.main.async {
+                    // Re-assert the now-playing entry the system wiped.
+                    webView.evaluateJavaScript(
+                        "window.__resonanceRemote && window.__resonanceRemote.command('refresh');",
+                        completionHandler: nil
+                    )
+                }
+            }
+        }
+
+        func detachShell() {
+            NowPlayingController.shared.sendCommand = nil
+            AudioSessionController.shared.onShouldResume = nil
+            AudioSessionController.shared.onMediaServicesReset = nil
+        }
+
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             guard
                 message.name == "resonance",
@@ -201,8 +258,15 @@ struct ResonanceWebView: UIViewRepresentable {
                 let type = body["type"] as? String
             else { return }
 
-            if type == "openSettings" {
+            switch type {
+            case "openSettings":
                 parent.onOpenSettings()
+            case "playback":
+                if let report = PlaybackReport(body: body) {
+                    parent.onPlayback(report)
+                }
+            default:
+                break
             }
         }
 

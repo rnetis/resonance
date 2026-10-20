@@ -5,8 +5,10 @@ struct ResonanceApp: App {
     @StateObject private var model = AppModel()
 
     init() {
-        // Must happen before any media starts so background playback works.
-        AudioSessionController.shared.activate()
+        // Category + system notifications only; the session is activated when the
+        // web player actually starts playing (see AudioSessionController).
+        AudioSessionController.shared.prepare()
+        NowPlayingController.shared.configureRemoteCommands()
     }
 
     var body: some Scene {

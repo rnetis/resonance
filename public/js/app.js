@@ -1323,13 +1323,32 @@ async function clearFinishedJobs() {
 
 /* --------------------------------------------------------------- sheet/UI */
 
+/** True when routing audio through Web Audio is safe (not iOS/WKWebView). */
+function visualizerAllowed() {
+  const bridge = window.__resonanceNative;
+
+  // The spectrum analyser re-routes the <audio> element through an AudioContext,
+  // which iOS suspends once the app is backgrounded — playback then goes silent
+  // while the track keeps "playing". The native shell opts out, and iOS Safari
+  // behaves the same way.
+  if (bridge && bridge.visualizer === false) return false;
+  if (/iPad|iPhone|iPod/.test(navigator.userAgent)) return false;
+
+  return typeof (window.AudioContext || window.webkitAudioContext) === "function";
+}
+
 function openSheet() {
   if (!player.current) return;
   dom.sheet.hidden = false;
   document.body.style.overflow = "hidden";
   syncSheet();
   renderQueue();
-  player.enableVisualizer(dom.visualizer);
+
+  if (visualizerAllowed()) {
+    player.enableVisualizer(dom.visualizer);
+  } else {
+    dom.visualizer.hidden = true;
+  }
 }
 
 function closeSheet() {

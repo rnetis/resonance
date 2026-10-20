@@ -16,7 +16,8 @@ struct WebViewScreen: View {
                         model.loadError = message
                     }
                 },
-                onOpenSettings: { model.showSettings = true }
+                onOpenSettings: { model.showSettings = true },
+                onPlayback: { report in model.handlePlayback(report) }
             )
             .ignoresSafeArea()
 

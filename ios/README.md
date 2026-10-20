@@ -88,9 +88,17 @@ data* and *Forget server address*.
   not cached. Put the server behind HTTPS (Caddy, nginx, a tunnel, or Tailscale certs) to
   get offline playback inside the app. `Trust self-signed certificate` makes a self-signed
   HTTPS server usable.
-- **Background audio** comes from `UIBackgroundModes: audio` plus
-  `AVAudioSession .playback`; the app re-activates the session after interruptions (calls,
-  Siri).
+- **Background audio** is the shell's job, and it needs all of these together:
+  `UIBackgroundModes: audio` in `Info.plist`, `AVAudioSession .playback` **activated when
+  playback starts** (not at launch), and a `MPRemoteCommandCenter` / `MPNowPlayingInfoCenter`
+  entry — registering remote commands is what makes iOS keep treating the app as the
+  active media app instead of suspending it. The page reports its state through
+  `window.__resonanceNative.onPlayback(...)`, and remote buttons call back in through
+  `window.__resonanceRemote.command('next' | 'previous' | 'play' | 'pause' | 'seek' …)`.
+- **No Web Audio in this app.** The page's spectrum visualiser would re-route the
+  `<audio>` element through an `AudioContext`, which iOS suspends when the app is
+  backgrounded — playback goes silent while the track keeps running. The shell injects
+  `visualizer: false`, so pure media playback keeps going when the screen locks.
 - **External links** (e.g. *Open on YouTube* in a track's menu) open in Safari instead of
   navigating the shell. Only the configured server host loads inside the web view.
 - **Storage** uses the default `WKWebsiteDataStore`, so the service worker, offline tracks
@@ -99,6 +107,15 @@ data* and *Forget server address*.
   usually speak plain HTTP. Remove that key if you only ever use HTTPS.
 - **Debug builds** are inspectable: attach Safari → Develop → your device → Resonance
   (iOS 16.4+ enables `isInspectable`).
+
+- **No cover art on the lock screen** → the page reports an absolute artwork URL; if your
+  server is HTTPS with a self-signed certificate, enable *Trust self-signed certificate*.
+- **Playback stops when the screen locks** → open the app's sliders button →
+  *Diagnostics*: after starting a track it should read `active: yes` and `page playing: yes`,
+  and the lock screen should show the title. Long-press the lock-screen entry to make sure
+  the app is the active media app rather than another player. Note that starting playback
+  *from the lock screen* right after a cold launch cannot work (the page has not reported a
+  playable track yet) — start the first track in the app.
 
 ## Housekeeping
 

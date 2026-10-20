@@ -36,8 +36,21 @@ final class AppModel: ObservableObject {
         self.trustSelfSigned = trustSelfSigned
         defaults.set(serverURL, forKey: Keys.serverURL)
         defaults.set(trustSelfSigned, forKey: Keys.trustSelfSigned)
+        NowPlayingController.shared.trustSelfSigned = trustSelfSigned
         loadError = nil
         reloadToken += 1
+    }
+
+    /// Applies a playback report from the web player to the audio session and the
+    /// lock-screen now-playing entry.
+    func handlePlayback(_ report: PlaybackReport) {
+        if report.isPlaying {
+            AudioSessionController.shared.beginPlayback()
+        } else {
+            AudioSessionController.shared.markPaused()
+        }
+
+        NowPlayingController.shared.update(with: report)
     }
 
     func reload() {

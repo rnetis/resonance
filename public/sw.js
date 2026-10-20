@@ -3,7 +3,7 @@
 // straight to the network, and offline copies are handled by the Cache Storage
 // API from the page (see public/js/offline.js).
 
-const VERSION = "resonance-v8";
+const VERSION = "resonance-v9";
 const SHELL = [
   "/",
   "/index.html",

@@ -9,6 +9,7 @@ struct SetupView: View {
     @State private var urlText = ""
     @State private var trustSelfSigned = false
     @State private var showClearConfirm = false
+    @State private var diagnosticsTick = 0
 
     private var valid: Bool {
         AppModel.isValid(urlText)
@@ -57,6 +58,24 @@ struct SetupView: View {
                 } footer: {
                     Text("Clearing removes the offline app shell, tracks saved for offline listening and any site data for that server.")
                 }
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(AudioSessionController.shared.snapshot())
+                    Text("lock screen: \(NowPlayingController.shared.isCommandChannelOpen ? "connected" : "not connected")")
+                    Text("last report: \(NowPlayingController.shared.lastReportSummary)")
+                }
+                .font(.system(.caption, design: .monospaced))
+                .foregroundColor(.secondary)
+                .lineLimit(3)
+                .id(diagnosticsTick)
+
+                Button("Refresh") { diagnosticsTick += 1 }
+            } header: {
+                Text("Diagnostics")
+            } footer: {
+                Text("Audio session and lock-screen state. Start a track, lock the screen and reopen this panel if playback stops.")
             }
 
             if isFirstRun {

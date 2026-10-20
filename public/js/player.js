@@ -24,6 +24,16 @@ export class Player extends EventTarget {
     this.audio.preload = "metadata";
     this.audio.setAttribute("playsinline", "");
 
+    // iOS suspends media that is not part of the document, so the element lives
+    // in the DOM (visually hidden, non-interactive) on every platform.
+    this.audio.style.cssText = "position:absolute;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none";
+
+    if (document.body) {
+      document.body.append(this.audio);
+    } else {
+      document.addEventListener("DOMContentLoaded", () => document.body.append(this.audio), { once: true });
+    }
+
     this.queue = [];
     this.index = -1;
     this.shuffle = false;
@@ -39,6 +49,7 @@ export class Player extends EventTarget {
     this._rafId = 0;
     this._saveTimer = 0;
     this._sessionTick = 0;
+    this._nativeTick = 0;
 
     this._bindAudio();
     this._restore();
@@ -75,12 +86,14 @@ export class Player extends EventTarget {
     audio.addEventListener("play", () => {
       this._updateSessionState();
       this.emit("play");
+      this._reportNative("playing");
       this._startVisualizerLoop();
     });
 
     audio.addEventListener("pause", () => {
       this._updateSessionState();
       this.emit("pause");
+      this._reportNative("paused");
       this._save({ position: true });
     });
 
@@ -100,6 +113,12 @@ export class Player extends EventTarget {
         this._sessionTick = Date.now();
         this._updatePositionState();
         this._save({ position: true });
+      }
+
+      // Keep the native lock-screen scrubber honest (throttled).
+      if (Date.now() - this._nativeTick > 5000) {
+        this._nativeTick = Date.now();
+        this._reportNative(this.audio.paused ? "paused" : "progress");
       }
     });
 
@@ -335,6 +354,7 @@ export class Player extends EventTarget {
     this.emit("track", { track, index: this.index });
     this.emit("srcstate", { track, status: "loading", offline: false });
     this._updateMediaSession();
+    this._reportNative("track");
 
     await this._setSourceFor(track, token);
 
@@ -430,6 +450,42 @@ export class Player extends EventTarget {
     this._canonicalUrl = null;
     this._playingFromCache = false;
     this._updateMediaSession();
+  }
+
+  /* -------------------------------------------------------- native shell hook */
+
+  /**
+   * Hands playback state to the iOS/Android shell, which owns the audio session,
+   * the lock-screen "now playing" entry and the remote-control commands.
+   */
+  _reportNative(state) {
+    const bridge = window.__resonanceNative;
+    if (!bridge || typeof bridge.onPlayback !== "function") return;
+
+    const track = this.current;
+
+    try {
+      bridge.onPlayback({
+        state,
+        title: track?.title || "",
+        artist: track?.artist || "",
+        album: track?.album || "",
+        artwork: absoluteUrl(track?.cover || track?.thumbnail || ""),
+        duration: this.duration || track?.duration || 0,
+        position: this.position,
+        rate: 1
+      });
+    } catch {
+      /* the shell is not listening */
+    }
+  }
+
+  /**
+   * Re-sends the current state to the native shell. Used after the system rebuilt
+   * the audio pipeline (which wipes the lock-screen now-playing entry).
+   */
+  reportToShell() {
+    this._reportNative(this.audio.paused ? "paused" : "playing");
   }
 
   /* -------------------------------------------------------- media session */
@@ -695,3 +751,50 @@ export class Player extends EventTarget {
 }
 
 export const player = new Player();
+
+/** Absolute URL for media that the native shell has to fetch itself. */
+function absoluteUrl(url) {
+  if (!url) return "";
+  try {
+    return new URL(url, location.href).href;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Commands issued by the native shell's lock-screen / headset controls. A single
+ * string entry point keeps the native `evaluateJavaScript` call trivial.
+ */
+window.__resonanceRemote = {
+  command(name, value) {
+    switch (name) {
+      case "play":
+        player.play();
+        break;
+      case "pause":
+        player.pause();
+        break;
+      case "toggle":
+        player.toggle();
+        break;
+      case "next":
+        player.next();
+        break;
+      case "previous":
+        player.prev();
+        break;
+      case "seek":
+        if (Number.isFinite(value)) player.seekTo(value);
+        break;
+      case "seekBy":
+        if (Number.isFinite(value)) player.seekBy(value);
+        break;
+      case "refresh":
+        player.reportToShell();
+        break;
+      default:
+        break;
+    }
+  }
+};
