@@ -1,0 +1,1315 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Resonance — your music, on your own server</title>
+<meta name="description" content="Self-hosted music player: YouTube search, yt-dlp downloads, a tagged library, a library per person, sharing, chunked (HLS) playback, and clients for the web, iPhone and Android.">
+<meta name="color-scheme" content="dark">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Resonance — self-hosted music player">
+<meta property="og:description" content="One server, three clients: PWA, iOS and Android. A library per person, sharing between them, and playback that starts after the first chunk.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%237c5cff'/%3E%3Cpath d='M22 7.4v13.1a4.4 4.4 0 1 1-2.4-3.9V11l-8 1.9v9.2a4.4 4.4 0 1 1-2.4-3.9V10a1.2 1.2 0 0 1 .9-1.2l10.6-2.4A1.2 1.2 0 0 1 22 7.4Z' fill='white'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #08070d;
+    --bg-soft: #0e0d16;
+    --card: rgba(255, 255, 255, 0.035);
+    --card-hover: rgba(255, 255, 255, 0.06);
+    --line: rgba(255, 255, 255, 0.09);
+    --line-strong: rgba(255, 255, 255, 0.16);
+    --text: #ece9f5;
+    --muted: #a5a0b8;
+    --accent: #7c5cff;
+    --accent-soft: #a78bff;
+    --accent-dim: rgba(124, 92, 255, 0.16);
+    --green: #4ade80;
+    --amber: #fbbf24;
+    --radius: 18px;
+    --radius-sm: 12px;
+    --wrap: 1120px;
+    --font: 'Vazirmatn', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Tahoma, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; scroll-padding-block-start: 84px; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 16.5px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset-block-start: -30vh;
+    inset-inline: -20vw auto;
+    inline-size: 70vw;
+    block-size: 70vh;
+    background: radial-gradient(circle at 30% 30%, rgba(124, 92, 255, 0.28), transparent 62%);
+    filter: blur(20px);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  body::after {
+    content: "";
+    position: fixed;
+    inset-block-end: -35vh;
+    inset-inline: auto -25vw;
+    inline-size: 60vw;
+    block-size: 65vh;
+    background: radial-gradient(circle at 60% 50%, rgba(255, 92, 190, 0.14), transparent 65%);
+    filter: blur(30px);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  a { color: var(--accent-soft); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  h1, h2, h3 { line-height: 1.25; margin: 0; font-weight: 800; letter-spacing: -0.015em; }
+  h1 { font-size: clamp(2.1rem, 5.2vw, 3.6rem); }
+  h2 { font-size: clamp(1.6rem, 3.4vw, 2.3rem); }
+  h3 { font-size: 1.08rem; font-weight: 600; letter-spacing: 0; }
+  p { margin: 0; }
+
+  .wrap { inline-size: min(100% - 2.4rem, var(--wrap)); margin-inline: auto; position: relative; z-index: 1; }
+
+  /* ---------------------------------------------------------------- header */
+
+  .site-header {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 20;
+    backdrop-filter: blur(14px);
+    background: rgba(8, 7, 13, 0.78);
+    border-block-end: 1px solid var(--line);
+  }
+
+  .header-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    min-block-size: 68px;
+  }
+
+  .brand { display: flex; align-items: center; gap: 0.6rem; font-weight: 800; letter-spacing: -0.02em; }
+  .brand-mark {
+    display: grid;
+    place-items: center;
+    inline-size: 34px;
+    block-size: 34px;
+    border-radius: 10px;
+    background: linear-gradient(140deg, var(--accent), #b06bff);
+    box-shadow: 0 6px 20px rgba(124, 92, 255, 0.35);
+  }
+  .brand-mark svg { inline-size: 20px; block-size: 20px; }
+
+  .site-nav { display: none; gap: 1.35rem; margin-inline-start: auto; font-size: 0.94rem; }
+  .site-nav a { color: var(--muted); }
+  .site-nav a:hover { color: var(--text); text-decoration: none; }
+
+  .lang-switch {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--card);
+    margin-inline-start: auto;
+  }
+  .site-nav + .lang-switch { margin-inline-start: 0; }
+
+  .lang-switch button {
+    font: inherit;
+    font-size: 0.83rem;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    border-radius: 999px;
+    padding: 0.28rem 0.7rem;
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+  }
+  .lang-switch button[aria-pressed="true"] { background: var(--accent); color: #fff; font-weight: 600; }
+  .lang-switch button:not([aria-pressed="true"]):hover { color: var(--text); }
+
+  /* ------------------------------------------------------------------ hero */
+
+  .hero { padding-block: clamp(3.5rem, 9vw, 6.5rem) clamp(2rem, 5vw, 3.5rem); }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.85rem;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    background: var(--accent-dim);
+    color: var(--accent-soft);
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-block-end: 1.4rem;
+  }
+  .badge .dot { inline-size: 7px; block-size: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 4px rgba(74, 222, 128, 0.15); }
+
+  .hero h1 { max-inline-size: 20ch; }
+  .hero h1 .grad { background: linear-gradient(100deg, #fff 20%, var(--accent-soft) 90%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+  .lede { color: var(--muted); font-size: clamp(1rem, 2vw, 1.14rem); max-inline-size: 62ch; margin-block-start: 1.1rem; }
+
+  .cta-row { display: flex; flex-wrap: wrap; gap: 0.7rem; margin-block-start: 1.9rem; }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.74rem 1.25rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--line-strong);
+    background: var(--card);
+    color: var(--text);
+    font-weight: 600;
+    font-size: 0.95rem;
+    transition: transform 0.16s, background 0.16s, border-color 0.16s;
+  }
+  .btn:hover { text-decoration: none; transform: translateY(-2px); background: var(--card-hover); border-color: var(--accent); }
+  .btn.primary { background: linear-gradient(135deg, var(--accent), #9a6bff); border-color: transparent; color: #fff; box-shadow: 0 10px 30px rgba(124, 92, 255, 0.32); }
+  .btn.primary:hover { box-shadow: 0 14px 36px rgba(124, 92, 255, 0.42); }
+  .btn svg { inline-size: 18px; block-size: 18px; }
+  [dir="rtl"] .btn .arrow { transform: scaleX(-1); }
+
+  .fineprint { color: var(--muted); font-size: 0.86rem; margin-block-start: 1rem; }
+
+  .chip-row { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-block-start: 1.6rem; }
+  .chip {
+    font-size: 0.82rem;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 0.3rem 0.8rem;
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  /* ---------------------------------------------------------------- blocks */
+
+  section { padding-block: clamp(2.6rem, 6vw, 4.6rem); }
+
+  .section-head { max-inline-size: 68ch; margin-block-end: 2.2rem; }
+  .section-head .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: var(--accent-soft);
+    margin-block-end: 0.7rem;
+    display: block;
+  }
+  [dir="rtl"] .section-head .eyebrow { letter-spacing: 0; text-transform: none; font-size: 0.86rem; }
+  .section-head p { color: var(--muted); margin-block-start: 0.75rem; }
+
+  .grid { display: grid; gap: 1rem; }
+  .grid.cols-2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .grid.cols-3 { grid-template-columns: repeat(auto-fit, minmax(265px, 1fr)); }
+  .grid.cols-4 { grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 1.35rem 1.3rem;
+    transition: border-color 0.18s, background 0.18s, transform 0.18s;
+  }
+  .card:hover { border-color: var(--line-strong); background: var(--card-hover); transform: translateY(-3px); }
+  .card p { color: var(--muted); font-size: 0.94rem; margin-block-start: 0.55rem; }
+
+  .icon {
+    display: grid;
+    place-items: center;
+    inline-size: 42px;
+    block-size: 42px;
+    border-radius: 12px;
+    background: var(--accent-dim);
+    color: var(--accent-soft);
+    margin-block-end: 0.9rem;
+  }
+  .icon svg { inline-size: 22px; block-size: 22px; }
+
+  /* ----------------------------------------------------------------- shots */
+
+  .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
+  .shot { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--bg-soft); }
+  .shot img { display: block; inline-size: 100%; block-size: auto; }
+  .shot figcaption { padding: 0.65rem 0.9rem; font-size: 0.86rem; color: var(--muted); border-block-start: 1px solid var(--line); }
+  figure { margin: 0; }
+
+  /* ------------------------------------------------------------------ flow */
+
+  .steps { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); counter-reset: step; }
+  .step { position: relative; padding-inline-start: 3.1rem; }
+  .step::before {
+    counter-increment: step;
+    content: counter(step);
+    position: absolute;
+    inset-inline-start: 0;
+    inset-block-start: 0;
+    inline-size: 2.1rem;
+    block-size: 2.1rem;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--accent-dim);
+    border: 1px solid var(--line-strong);
+    color: var(--accent-soft);
+    font-weight: 700;
+    font-size: 0.95rem;
+  }
+  .step h3 { margin-block-end: 0.35rem; }
+  .step p { color: var(--muted); font-size: 0.92rem; }
+
+  /* ----------------------------------------------------------------- chunk */
+
+  .chunk-demo {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--bg-soft);
+    padding: 1.4rem 1.3rem;
+    margin-block-start: 1.6rem;
+  }
+  .chunk-track { display: flex; gap: 5px; }
+  .chunk-track span {
+    flex: 1;
+    block-size: 34px;
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--line);
+    animation: fill 3.2s ease-out infinite;
+  }
+  .chunk-track span:nth-child(1) { animation-delay: 0s; }
+  .chunk-track span:nth-child(n+2) { animation-delay: 0.12s; }
+  .chunk-track span:nth-child(n+4) { animation-delay: 0.55s; }
+  .chunk-track span:nth-child(n+7) { animation-delay: 1.05s; }
+  .chunk-track span:nth-child(n+9) { animation-delay: 1.5s; }
+  @keyframes fill {
+    0%, 4% { background: rgba(255, 255, 255, 0.06); border-color: var(--line); }
+    22%, 78% { background: var(--accent); border-color: transparent; box-shadow: 0 0 18px rgba(124, 92, 255, 0.35); }
+    100% { background: rgba(255, 255, 255, 0.06); border-color: var(--line); }
+  }
+  .chunk-legend { display: flex; justify-content: space-between; margin-block-start: 0.6rem; font-size: 0.8rem; color: var(--muted); }
+  .chunk-legend .start { color: var(--green); font-weight: 600; }
+
+  /* ------------------------------------------------------------------ tree */
+
+  .tree {
+    font-family: var(--mono);
+    font-size: 0.9rem;
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 1.15rem 1.25rem;
+  }
+  .tree ul { list-style: none; margin: 0; padding-inline-start: 1.15rem; border-inline-start: 1px dashed var(--line-strong); }
+  .tree > ul { padding-inline-start: 0; border-inline-start: 0; }
+  .tree li { padding-block: 0.18rem; }
+  .tree .path { color: var(--text); direction: ltr; unicode-bidi: embed; }
+  .tree .note { color: var(--muted); font-family: var(--font); font-size: 0.84rem; }
+  .tree .owner { color: var(--accent-soft); }
+  .tree .shared { color: var(--green); }
+
+  /* --------------------------------------------------------------- install */
+
+  .install-card { display: flex; flex-direction: column; gap: 0.6rem; }
+  .install-card .btn { justify-content: center; margin-block-start: auto; }
+  .install-card .os { font-size: 0.8rem; color: var(--muted); }
+  .install-card ul { margin: 0.2rem 0 0; padding-inline-start: 1.1rem; color: var(--muted); font-size: 0.88rem; }
+  .install-card li { margin-block: 0.15rem; }
+
+  /* ------------------------------------------------------------------ code */
+
+  .code {
+    position: relative;
+    background: #06050b;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    margin-block: 0.7rem;
+    overflow: hidden;
+  }
+  .code pre {
+    margin: 0;
+    padding: 1rem 3.6rem 1rem 1.05rem;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 0.87rem;
+    line-height: 1.75;
+    direction: ltr;
+    text-align: left;
+  }
+  [dir="rtl"] .code pre { padding: 1rem 1.05rem 1rem 3.6rem; }
+  .code .copy {
+    position: absolute;
+    inset-block-start: 0.55rem;
+    inset-inline-end: 0.55rem;
+    font: inherit;
+    font-size: 0.76rem;
+    padding: 0.28rem 0.6rem;
+    border-radius: 8px;
+    border: 1px solid var(--line-strong);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .code .copy:hover { color: var(--text); border-color: var(--accent); }
+  .code .copy[data-copied="1"] { color: var(--green); border-color: rgba(74, 222, 128, 0.5); }
+  code { font-family: var(--mono); font-size: 0.9em; }
+  .inline-code {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 0.05rem 0.36rem;
+    direction: ltr;
+    unicode-bidi: embed;
+    display: inline-block;
+  }
+
+  /* ------------------------------------------------------------------ table */
+
+  .table-wrap { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--card); }
+  table { inline-size: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td { text-align: start; padding: 0.68rem 0.95rem; border-block-end: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); background: rgba(255, 255, 255, 0.02); }
+  [dir="rtl"] th { text-transform: none; letter-spacing: 0; font-size: 0.86rem; }
+  tbody tr:last-child td { border-block-end: 0; }
+  td:first-child { font-family: var(--mono); font-size: 0.84rem; direction: ltr; unicode-bidi: embed; white-space: nowrap; color: var(--accent-soft); }
+  td:last-child { color: var(--muted); }
+
+  /* ------------------------------------------------------------- notices */
+
+  .notice {
+    display: flex;
+    gap: 0.8rem;
+    align-items: flex-start;
+    border: 1px solid rgba(251, 191, 36, 0.28);
+    background: rgba(251, 191, 36, 0.07);
+    border-radius: var(--radius-sm);
+    padding: 0.95rem 1.05rem;
+    color: #f7e6bd;
+    font-size: 0.92rem;
+    margin-block-start: 1.4rem;
+  }
+  .notice svg { inline-size: 20px; block-size: 20px; flex: none; color: var(--amber); margin-block-start: 0.2rem; }
+
+  .limits { display: grid; gap: 0.8rem; }
+  .limit { display: flex; gap: 0.75rem; align-items: flex-start; font-size: 0.95rem; color: var(--muted); }
+  .limit b { color: var(--text); font-weight: 600; }
+  .limit .x { color: #ff8fa3; flex: none; font-weight: 700; }
+
+  /* ------------------------------------------------------------------- faq */
+
+  details {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--card);
+    padding: 0.95rem 1.1rem;
+  }
+  details + details { margin-block-start: 0.7rem; }
+  details[open] { border-color: var(--line-strong); }
+  summary { cursor: pointer; font-weight: 600; list-style: none; display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "+"; color: var(--accent-soft); font-weight: 700; font-size: 1.2rem; flex: none; }
+  details[open] summary::after { content: "–"; }
+  details p { color: var(--muted); font-size: 0.94rem; margin-block-start: 0.6rem; }
+
+  /* ---------------------------------------------------------------- footer */
+
+  .site-footer {
+    border-block-start: 1px solid var(--line);
+    padding-block: 2.4rem 3rem;
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin-block-start: 2rem;
+  }
+  .footer-grid { display: grid; gap: 1.6rem; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .footer-grid strong { color: var(--text); display: block; margin-block-end: 0.4rem; }
+  .footer-grid ul { list-style: none; margin: 0; padding: 0; }
+  .footer-grid li { margin-block: 0.25rem; }
+  .footer-bottom { margin-block-start: 2rem; padding-block-start: 1.2rem; border-block-start: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 0.6rem 1.2rem; justify-content: space-between; font-size: 0.84rem; }
+
+  @media (min-width: 860px) {
+    .site-nav { display: flex; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .chunk-track span { animation: none; background: rgba(255, 255, 255, 0.08); }
+    .chunk-track span:nth-child(-n+3) { background: var(--accent); }
+    .card:hover, .btn:hover { transform: none; }
+  }
+
+  @media print {
+    body::before, body::after, .site-header, .cta-row, .code .copy { display: none; }
+    body { background: #fff; color: #000; }
+  }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-row">
+    <a class="brand" href="#top">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4.6v10.9a3.6 3.6 0 1 1-2-3.2V8.2l-8 1.9v7.6a3.6 3.6 0 1 1-2-3.2V7.6a1 1 0 0 1 .8-1l10-2.3a1 1 0 0 1 1.2 1Z"/></svg>
+      </span>
+      <span>Resonance</span>
+    </a>
+
+    <nav class="site-nav" aria-label="Sections">
+      <a href="#features" data-i18n="nav_features">Features</a>
+      <a href="#how" data-i18n="nav_how">How it works</a>
+      <a href="#chunked" data-i18n="nav_chunked">Instant playback</a>
+      <a href="#people" data-i18n="nav_people">Libraries &amp; sharing</a>
+      <a href="#install" data-i18n="nav_install">Install</a>
+      <a href="#api" data-i18n="nav_api">API</a>
+      <a href="#faq" data-i18n="nav_faq">FAQ</a>
+    </nav>
+
+    <div class="lang-switch" role="group" aria-label="Language / زبان">
+      <button type="button" data-lang-btn="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang-btn="fa" aria-pressed="false">فارسی</button>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ----------------------------------------------------------------- hero -->
+  <section class="hero">
+    <div class="wrap">
+      <p class="badge"><span class="dot" aria-hidden="true"></span><span data-i18n="hero_badge">v3.0.0 — a library per person, sharing, and chunked playback</span></p>
+      <h1><span class="grad" data-i18n="hero_title">Your music, on your own server.</span></h1>
+      <p class="lede" data-i18n="hero_lede">Search YouTube, download with yt-dlp and keep a properly tagged library — then listen from a browser, an iPhone or an Android phone. Everyone gets their own shelf, and you can send songs to each other.</p>
+
+      <div class="cta-row">
+        <a class="btn primary" href="https://github.com/rnetis/resonance/releases/download/v3.0.0/Resonance.ipa">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.4 12.7c0-2.2 1.8-3.3 1.9-3.4-1-1.5-2.6-1.7-3.2-1.7-1.4-.1-2.7.8-3.4.8-.7 0-1.8-.8-3-.8-1.5 0-2.9.9-3.7 2.3-1.6 2.7-.4 6.8 1.1 9 .8 1.1 1.7 2.3 2.9 2.3 1.2 0 1.6-.8 3-.8 1.4 0 1.8.7 3 .7 1.2 0 2-1.1 2.8-2.2.9-1.3 1.3-2.6 1.3-2.7-.1 0-2.6-1-2.7-3.5ZM14.3 6.3c.6-.7 1-1.7.9-2.7-.9 0-2 .6-2.6 1.3-.6.6-1 1.6-.9 2.6 1 .1 2-.5 2.6-1.2Z"/></svg>
+          <span data-i18n="hero_cta_ios">Get the iOS app</span>
+          <span class="arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="btn" href="https://github.com/rnetis/resonance/releases/download/v3.0.0/resonance-android.apk">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 9h12v8.5A2.5 2.5 0 0 1 15.5 20h-7A2.5 2.5 0 0 1 6 17.5V9Zm-2 .5a1.5 1.5 0 0 1 1.5 1.5v5a1.5 1.5 0 0 1-3 0v-5A1.5 1.5 0 0 1 4 9.5Zm16 0a1.5 1.5 0 0 1 1.5 1.5v5a1.5 1.5 0 0 1-3 0v-5A1.5 1.5 0 0 1 20 9.5ZM7.6 3.2 8.9 5.5A7.5 7.5 0 0 1 12 4.8c1.1 0 2.2.2 3.1.7l1.3-2.3a.8.8 0 1 1 1.3.8l-1.2 2.2A6.4 6.4 0 0 1 18 8.5H6a6.4 6.4 0 0 1 1.5-2.3L6.3 4a.8.8 0 1 1 1.3-.8ZM9.3 6.7a.8.8 0 1 0 0 1.6.8.8 0 0 0 0-1.6Zm5.4 0a.8.8 0 1 0 0 1.6.8.8 0 0 0 0-1.6Z"/></svg>
+          <span data-i18n="hero_cta_android">Get the Android app</span>
+          <span class="arrow" aria-hidden="true">→</span>
+        </a>
+        <a class="btn" href="https://github.com/rnetis/resonance">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.9c-2.8.6-3.4-1.2-3.4-1.2-.4-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.3 1.1 2.9.8.1-.7.3-1.1.6-1.4-2.2-.2-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.4 9.4 0 0 1 5 0c1.9-1.3 2.7-1 2.7-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.4 4.8-4.6 5 .4.3.7 1 .7 2v2.9c0 .3.2.6.7.5A10 10 0 0 0 12 2Z"/></svg>
+          <span data-i18n="hero_cta_github">View on GitHub</span>
+        </a>
+      </div>
+
+      <p class="fineprint" data-i18n="hero_note">Unsigned IPA (you sideload it) · debug-signed APK · no cloud, no accounts, no subscription.</p>
+
+      <div class="chip-row">
+        <span class="chip" data-i18n="chip_pwa">Installable PWA</span>
+        <span class="chip" data-i18n="chip_ios">iPhone &amp; iPad</span>
+        <span class="chip" data-i18n="chip_android">Android</span>
+        <span class="chip">Node 20+ · yt-dlp · ffmpeg</span>
+        <span class="chip" data-i18n="chip_peruser">A library per person</span>
+        <span class="chip" data-i18n="chip_chunked">Chunked playback</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------------- shots -->
+  <section>
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow" data-i18n="shots_eyebrow">The web app</span>
+        <h2 data-i18n="shots_title">A real player, not a demo</h2>
+        <p data-i18n="shots_lede">Queue, shuffle, repeat, keyboard shortcuts, live spectrum visualiser, Media Session controls — and it installs like an app.</p>
+      </div>
+
+      <div class="shots">
+        <figure class="shot">
+          <img src="screenshots/search.png" alt="Resonance search screen with YouTube results and download buttons" fetchpriority="high" width="1280" height="577">
+          <figcaption data-i18n="shot_search">Search: download and play in one tap</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="screenshots/library.png" alt="Resonance library screen listing tagged tracks with cover art" loading="lazy" width="1280" height="577">
+          <figcaption data-i18n="shot_library">Library: folders, tags and cover art</figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="screenshots/now-playing.png" alt="Resonance now playing panel with artwork, seek bar and visualiser" loading="lazy" width="1280" height="577">
+          <figcaption data-i18n="shot_now">Now playing, with the visualiser</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------- features -->
+  <section id="features">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow" data-i18n="features_eyebrow">Features</span>
+        <h2 data-i18n="features_title">Everything a music player should do — without the subscription</h2>
+        <p data-i18n="features_lede">One small Express server does the work, and three clients speak the same JSON API.</p>
+      </div>
+
+      <div class="grid cols-3">
+        <article class="card">
+          <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M10.5 3a7.5 7.5 0 1 0 4.55 13.46l4.24 4.25a1.2 1.2 0 0 0 1.7-1.7l-4.25-4.24A7.5 7.5 0 0 0 10.5 3Zm0 2.4a5.1 5.1 0 1 1 0 10.2 5.1 5.1 0 0 1 0-10.2Z"/></svg></span>
+          <h3 data-i18n="f1_title">Search → download → play</h3>
+          <p data-i18n="f1_body">Tap a YouTube result: it downloads with yt-dlp, shows honest progress (percent, speed, ETA, “converting audio”), gets its tags and cover art, and starts playing when it lands.</p>
+        </article>
+
+        <article class="card">
+          <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h2.6v16H4V4Zm5.2 0h2.6v16H9.2V4Zm6 1.2 2.5-.7 4 15.1-2.5.7-4-15.1Z"/></svg></span>
+          <h3 data-i18n="f2_title">A library, not a playlist</h3>
+          <p data-i18n="f2_body">ID3v2 and M4A tags read into a browsable library: folders, a recursive “all songs” view, filter, durations, embedded cover art with an ffmpeg fallback.</p>
+        </article>
+
+        <article class="card">
+          <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm7 .5a3 3 0 1 1 0 6 3 3 0 0 1 0-6Zm0 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2ZM9 13.5c3 0 5.5 1.6 5.5 3.8V19a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1v-1.7c0-2.2 2.5-3.8 5.5-3.8Zm0 2c-2 0-3.5.9-3.5 1.8V18h7v-.7c0-.9-1.5-1.8-3.5-1.8Zm8.2-2.1c1.9.3 3.3 1.4 3.3 2.8V19a1 1 0 0 1-1 1h-2.2v-1.7c0-1.2-.6-2.2-1.5-3l1.4-.9Z"/></svg></span>
+          <h3 data-i18n="f3_title">A library per person</h3>
+          <p data-i18n="f3_body">Pick a name once per device and the server answers with that person’s folder only. The library you already have stays the server owner’s, untouched.</p>
+        </article>
+
+        <article class="card">
+          <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3a1 1 0 0 1 1 1v8.6l1.8-1.8a1 1 0 0 1 1.4 1.4l-3.5 3.5a1 1 0 0 1-1.4 0L7.8 13.2a1 1 0 0 1 1.4-1.4l1.8 1.8V4a1 1 0 0 1 1-1ZM5 15a1 1 0 0 1 1 1v2h12v-2a1 1 0 0 1 2 0v2.4A1.6 1.6 0 0 1 18.4 20H5.6A1.6 1.6 0 0 1 4 18.4V16a1 1 0 0 1 1-1Z"/></svg></span>
+          <h3 data-i18n="f4_title">Share songs with each other</h3>
+          <p data-i18n="f4_body">Send a track to one person or to everyone. It stays in your library; they can play it in place or copy it into theirs.</p>
+        </article>
+
+        <article class="card">
+          <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4.5 13.5H11l-1 8.5L19.5 10H13V2Z"/></svg></span>
+          <h3 data-i18n="f5_title">Starts in milliseconds, not minutes</h3>
+          <p data-i18n="f5_body">Tracks are split into ~4-second chunks (HLS) so playback begins after the first one, with the whole-file Range stream kept as an automatic fallback.</p>
+        </article>
+
+        <article class="card">
+          <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v1A2.5 2.5 0 0 1 17.5 9h-11A2.5 2.5 0 0 1 4 6.5v-1Zm0 12A2.5 2.5 0 0 1 6.5 15h11a2.5 2.5 0 0 1 2.5 2.5v1A2.5 2.5 0 0 1 17.5 21h-11A2.5 2.5 0 0 1 4 18.5v-1ZM7 5.2a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6Zm0 12a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6Z"/></svg></span>
+          <h3 data-i18n="f6_title">One server, three clients</h3>
+          <p data-i18n="f6_body">An installable PWA, a native SwiftUI iOS app and a native Kotlin/Compose Android app — same API, same library, same queue behaviour.</p>
+        </article>
+
+        <article class="card">
+          <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3a9 9 0 0 0-9 9v5.5A2.5 2.5 0 0 0 5.5 20H8v-7H5.2A7 7 0 0 1 18.8 13H16v7h2.5a2.5 2.5 0 0 0 2.5-2.5V12a9 9 0 0 0-9-9Z"/></svg></span>
+          <h3 data-i18n="f7_title">Keeps playing when the screen locks</h3>
+          <p data-i18n="f7_body">Real background audio: AVAudioSession plus remote commands on iOS, a MediaSessionService on Android — lock screen, headset buttons and car controls included.</p>
+        </article>
+
+        <article class="card">
+          <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3a9 9 0 0 1 9 9 9 9 0 0 1-9 9 9 9 0 0 1-9-9 9 9 0 0 1 9-9Zm0 2.2A6.8 6.8 0 0 0 5.2 12a6.8 6.8 0 0 0 6.8 6.8 6.8 6.8 0 0 0 6.8-6.8A6.8 6.8 0 0 0 12 5.2Zm0 2.6 1.4 3.4 3.6.3-2.7 2.4.8 3.5-3.1-1.8-3.1 1.8.8-3.5-2.7-2.4 3.6-.3L12 7.8Z"/></svg></span>
+          <h3 data-i18n="f8_title">Offline when you want it</h3>
+          <p data-i18n="f8_body">Save a track to the device and it plays with no server in reach — as a real file on iOS and Android, through Cache Storage in the browser (that part needs HTTPS).</p>
+        </article>
+
+        <article class="card">
+          <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 6a1 1 0 0 1 1-1h11a1 1 0 0 1 0 2H5a1 1 0 0 1-1-1Zm0 6a1 1 0 0 1 1-1h11a1 1 0 0 1 0 2H5a1 1 0 0 1-1-1Zm0 6a1 1 0 0 1 1-1h7a1 1 0 0 1 0 2H5a1 1 0 0 1-1-1Zm15-13h1v10.5a2.5 2.5 0 1 1-2-2.45V5Z"/></svg></span>
+          <h3 data-i18n="f9_title">Queue, playlists, shuffle, visualiser</h3>
+          <p data-i18n="f9_body">Play-next, add-to-queue, shuffle and repeat (off / all / one), seeking, keyboard shortcuts, playlists — and a live spectrum visualiser in the web app.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------------ how -->
+  <section id="how">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow" data-i18n="how_eyebrow">Architecture</span>
+        <h2 data-i18n="how_title">How it works</h2>
+        <p data-i18n="how_lede">YouTube audio can’t be streamed straight from a browser or a phone, and yt-dlp can’t run on iOS — so the server does the heavy lifting and every client stays thin.</p>
+      </div>
+
+      <div class="steps">
+        <div class="step">
+          <h3 data-i18n="how_s1_title">Express 5 server (server.js)</h3>
+          <p data-i18n="how_s1_body">Search, the download queue, ID3/M4A tagging, cover extraction, per-person libraries, sharing, Range streaming and chunked segmentation.</p>
+        </div>
+        <div class="step">
+          <h3 data-i18n="how_s2_title">yt-dlp + ffmpeg on your machine</h3>
+          <p data-i18n="how_s2_body">Downloads the audio, embeds metadata and artwork, probes durations, and cuts tracks into chunks on demand.</p>
+        </div>
+        <div class="step">
+          <h3 data-i18n="how_s3_title">Your library as plain files</h3>
+          <p data-i18n="how_s3_body">Everything lives in a folder you own: back it up, copy it, or drop new music in over SMB — it shows up in the apps.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- -------------------------------------------------------------- chunked -->
+  <section id="chunked">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow" data-i18n="chunk_eyebrow">Chunked playback</span>
+        <h2 data-i18n="chunk_title">Why playback feels instant</h2>
+        <p data-i18n="chunk_lede">Waiting for a whole file to transfer before the first note is a waste. The server hands the player a short playlist and cuts the track into ~4-second pieces as it goes.</p>
+      </div>
+
+      <div class="grid cols-3">
+        <article class="card">
+          <h3 data-i18n="chunk_step1_title">1 · Playlist first</h3>
+          <p data-i18n="chunk_step1_body"><span class='inline-code'>GET /api/playlist.m3u8</span> answers immediately — and starts ffmpeg segmenting the file in the background while it does.</p>
+        </article>
+        <article class="card">
+          <h3 data-i18n="chunk_step2_title">2 · Then the pieces</h3>
+          <p data-i18n="chunk_step2_body">The player fetches <span class='inline-code'>/api/chunk?key=…&amp;name=seg00001.ts</span> as it goes, so it can start after a single chunk.</p>
+        </article>
+        <article class="card">
+          <h3 data-i18n="chunk_step3_title">3 · Cached per file</h3>
+          <p data-i18n="chunk_step3_body">Chunks are keyed by path + size + mtime and pruned automatically, so the second play of that song is instant.</p>
+        </article>
+      </div>
+
+      <div class="chunk-demo" aria-hidden="true">
+        <div class="chunk-track">
+          <span></span><span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span><span></span>
+        </div>
+        <div class="chunk-legend">
+          <span class="start" data-i18n="chunk_legend_start">▲ audio starts here</span>
+          <span data-i18n="chunk_legend_end">the rest keeps arriving</span>
+        </div>
+      </div>
+
+      <div class="notice">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5 22 20.5H2L12 2.5Zm0 4.6L5.6 18.5h12.8L12 7.1Zm-1 3h2v4.6h-2V10.1Zm0 5.6h2v2h-2v-2Z"/></svg>
+        <p data-i18n="chunk_note">No ffmpeg on the server? <span class='inline-code'>/api/health</span> says so, and every client quietly falls back to the normal Range stream — slower to start, identical to listen to.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- --------------------------------------------------------------- people -->
+  <section id="people">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow" data-i18n="people_eyebrow">Multi-user &amp; sharing</span>
+        <h2 data-i18n="people_title">Everyone their own shelf — plus a shared one</h2>
+        <p data-i18n="people_lede">A name is not a password: it decides which library the server answers with. Nobody has to see anybody else’s music.</p>
+      </div>
+
+      <div class="grid cols-2">
+        <div class="tree" aria-label="Library layout on disk">
+          <ul>
+            <li><span class="path">MUSIC_DIR/</span></li>
+            <li>
+              <ul>
+                <li><span class="path">Coldplay - Yellow.mp3</span> <span class="note owner" data-i18n="tree_owner">← the owner’s own library</span></li>
+                <li>
+                  <span class="path">users/</span>
+                  <ul>
+                    <li><span class="path">sam/</span> <span class="note" data-i18n="tree_user">← sam’s library</span></li>
+                    <li><span class="path">bob/</span> <span class="note" data-i18n="tree_user2">← bob’s library</span></li>
+                  </ul>
+                </li>
+                <li><span class="path">shared/</span> <span class="note shared" data-i18n="tree_shared">← read-only, everyone can browse</span></li>
+              </ul>
+            </li>
+          </ul>
+        </div>
+
+        <div class="grid" style="align-content:start">
+          <article class="card">
+            <h3 data-i18n="people_o1_title">Your existing library is safe</h3>
+            <p data-i18n="people_o1">The files already in your music folder belong to the server owner (<span class='inline-code'>DEFAULT_USER</span>), so an install that already works keeps working — no migration, no moving files around.</p>
+          </article>
+          <article class="card">
+            <h3 data-i18n="people_o2_title">New name, new empty folder</h3>
+            <p data-i18n="people_o2">Anyone who picks a name gets their own folder under <span class='inline-code'>users/&lt;name&gt;</span>. Nothing is shared by accident, and downloads land in the requester’s folder.</p>
+          </article>
+          <article class="card">
+            <h3 data-i18n="people_o3_title">A shared area for the household</h3>
+            <p data-i18n="people_o3">Drop files into <span class='inline-code'>shared/</span> and every name can browse and play them — read-only through the apps, so nobody deletes anyone else’s music.</p>
+          </article>
+        </div>
+      </div>
+
+      <div class="grid cols-3" style="margin-block-start:1rem">
+        <article class="card">
+          <h3 data-i18n="people_s1_title">“Share with…”</h3>
+          <p data-i18n="people_s1">From any track’s menu, in any client, pick a person — or “Everyone” on the server. Add a note if you like; they see it next to the song.</p>
+        </article>
+        <article class="card">
+          <h3 data-i18n="people_s2_title">Play it in place</h3>
+          <p data-i18n="people_s2">The recipient streams the song straight from your library, with permissions checked on every request — someone who wasn’t part of the share gets a 403.</p>
+        </article>
+        <article class="card">
+          <h3 data-i18n="people_s3_title">Or keep a copy</h3>
+          <p data-i18n="people_s3">“Save to my library” copies the file into their folder, renaming instead of clobbering anything that already has that name.</p>
+        </article>
+      </div>
+
+      <div class="notice">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.5 22 20.5H2L12 2.5Zm0 4.6L5.6 18.5h12.8L12 7.1Zm-1 3h2v4.6h-2V10.1Zm0 5.6h2v2h-2v-2Z"/></svg>
+        <p data-i18n="people_warn">Usernames are not authentication. This is a home/LAN server: put it behind a VPN or an authenticating reverse proxy before exposing it to the internet.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- -------------------------------------------------------------- install -->
+  <section id="install">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow" data-i18n="install_eyebrow">Install</span>
+        <h2 data-i18n="install_title">Install it on your phone</h2>
+        <p data-i18n="install_lede">Start the server, point the app at it, type the name you want to listen as. That’s the whole setup.</p>
+      </div>
+
+      <div class="grid cols-3">
+        <article class="card install-card">
+          <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3a1 1 0 0 1 1 1v7.6l2.3-2.3a1 1 0 0 1 1.4 1.4l-4 4a1 1 0 0 1-1.4 0l-4-4A1 1 0 0 1 8.7 9.3L11 11.6V4a1 1 0 0 1 1-1ZM5 16a1 1 0 0 1 1 1v1h12v-1a1 1 0 0 1 2 0v1.6A1.4 1.4 0 0 1 18.6 20H5.4A1.4 1.4 0 0 1 4 18.6V17a1 1 0 0 1 1-1Z"/></svg></span>
+          <h3 data-i18n="pwa_title">PWA — any phone</h3>
+          <p data-i18n="pwa_body">Open the server address in the browser and use “Add to Home Screen”: full screen, an offline app shell, and Media Session controls on the lock screen.</p>
+          <ul>
+            <li data-i18n="pwa_li1">No store, no install file</li>
+            <li data-i18n="pwa_li2">Needs HTTPS (or localhost) for install &amp; offline</li>
+          </ul>
+          <a class="btn" href="https://github.com/rnetis/resonance#installing-on-a-phone"><span data-i18n="pwa_cta">Setup notes</span><span class="arrow" aria-hidden="true">→</span></a>
+        </article>
+
+        <article class="card install-card">
+          <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.4 12.7c0-2.2 1.8-3.3 1.9-3.4-1-1.5-2.6-1.7-3.2-1.7-1.4-.1-2.7.8-3.4.8-.7 0-1.8-.8-3-.8-1.5 0-2.9.9-3.7 2.3-1.6 2.7-.4 6.8 1.1 9 .8 1.1 1.7 2.3 2.9 2.3 1.2 0 1.6-.8 3-.8 1.4 0 1.8.7 3 .7 1.2 0 2-1.1 2.8-2.2.9-1.3 1.3-2.6 1.3-2.7-.1 0-2.6-1-2.7-3.5ZM14.3 6.3c.6-.7 1-1.7.9-2.7-.9 0-2 .6-2.6 1.3-.6.6-1 1.6-.9 2.6 1 .1 2-.5 2.6-1.2Z"/></svg></span>
+          <h3 data-i18n="ios_title">iPhone / iPad</h3>
+          <p data-i18n="ios_body">Download the unsigned IPA and sideload it with AltStore, Sideloadly or TrollStore — they re-sign it for your device.</p>
+          <ul>
+            <li data-i18n="ios_li1">iOS 16 or newer</li>
+            <li data-i18n="ios_li2">Background audio and lock-screen controls</li>
+            <li data-i18n="ios_li3">Save tracks on the device over plain HTTP</li>
+          </ul>
+          <a class="btn primary" href="https://github.com/rnetis/resonance/releases/download/v3.0.0/Resonance.ipa"><span data-i18n="ios_cta">Download IPA</span><span class="arrow" aria-hidden="true">→</span></a>
+        </article>
+
+        <article class="card install-card">
+          <span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 9h12v8.5A2.5 2.5 0 0 1 15.5 20h-7A2.5 2.5 0 0 1 6 17.5V9Zm-2 .5a1.5 1.5 0 0 1 1.5 1.5v5a1.5 1.5 0 0 1-3 0v-5A1.5 1.5 0 0 1 4 9.5Zm16 0a1.5 1.5 0 0 1 1.5 1.5v5a1.5 1.5 0 0 1-3 0v-5A1.5 1.5 0 0 1 20 9.5ZM7.6 3.2 8.9 5.5A7.5 7.5 0 0 1 12 4.8c1.1 0 2.2.2 3.1.7l1.3-2.3a.8.8 0 1 1 1.3.8l-1.2 2.2A6.4 6.4 0 0 1 18 8.5H6a6.4 6.4 0 0 1 1.5-2.3L6.3 4a.8.8 0 1 1 1.3-.8ZM9.3 6.7a.8.8 0 1 0 0 1.6.8.8 0 0 0 0-1.6Zm5.4 0a.8.8 0 1 0 0 1.6.8.8 0 0 0 0-1.6Z"/></svg></span>
+          <h3 data-i18n="android_title">Android</h3>
+          <p data-i18n="android_body">Download the APK and install it — allow installs from unknown sources when the system asks.</p>
+          <ul>
+            <li data-i18n="android_li1">Android 7 or newer</li>
+            <li data-i18n="android_li2">Media3 background playback and notification controls</li>
+            <li data-i18n="android_li3">Debug-signed: uninstall the old build to update</li>
+          </ul>
+          <a class="btn primary" href="https://github.com/rnetis/resonance/releases/download/v3.0.0/resonance-android.apk"><span data-i18n="android_cta">Download APK</span><span class="arrow" aria-hidden="true">→</span></a>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------ quickstart -->
+  <section id="start">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow" data-i18n="start_eyebrow">Quick start</span>
+        <h2 data-i18n="start_title">Run the server</h2>
+        <p data-i18n="start_lede">Requirements: Node 20 or newer, plus yt-dlp and ffmpeg/ffprobe on your PATH.</p>
+      </div>
+
+      <div class="grid cols-2">
+        <div>
+          <h3 data-i18n="start_step1">Install and start</h3>
+          <div class="code">
+            <button class="copy" type="button" data-copy data-i18n="copy">Copy</button>
+            <pre><code>git clone https://github.com/rnetis/resonance
+cd resonance
+npm install
+PORT=3130 node server.js</code></pre>
+          </div>
+          <p class="fineprint" data-i18n="start_note">The server prints every address it can be reached on, e.g. <span class='inline-code'>http://192.168.1.20:3130</span> — that is what you type into the apps.</p>
+        </div>
+
+        <div>
+          <h3 data-i18n="start_step2">Run the tests</h3>
+          <div class="code">
+            <button class="copy" type="button" data-copy data-i18n="copy">Copy</button>
+            <pre><code>npm test
+# 29 tests: library, Range streaming,
+# covers, jobs, users, sharing, chunks</code></pre>
+          </div>
+          <p class="fineprint" data-i18n="start_test_note">No accounts, no external services: the suite builds a throwaway library with ffmpeg and starts the real server.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------------ api -->
+  <section id="api">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow" data-i18n="api_eyebrow">API</span>
+        <h2 data-i18n="api_title">Small, plain JSON — write your own client</h2>
+        <p data-i18n="api_lede">Everything the three clients do goes through these routes. Identity travels as <span class='inline-code'>X-Resonance-User</span> on API calls, and as <span class='inline-code'>?user=</span> on media URLs (players don’t send headers).</p>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <caption class="sr-only" style="position:absolute;inline-size:1px;block-size:1px;overflow:hidden;clip:rect(0 0 0 0)">API endpoints</caption>
+          <thead>
+            <tr>
+              <th scope="col" data-i18n="th_route">Route</th>
+              <th scope="col" data-i18n="th_what">What it does</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>GET /api/search?q=</td><td data-i18n="api_search">YouTube results for a query</td></tr>
+            <tr><td>POST /api/download</td><td data-i18n="api_download">Queue a yt-dlp download into your library</td></tr>
+            <tr><td>GET /api/jobs</td><td data-i18n="api_jobs">Your download queue with live progress</td></tr>
+            <tr><td>GET /api/tracks</td><td data-i18n="api_tracks">Your library (or <span class='inline-code'>scope=shared</span>) with tags</td></tr>
+            <tr><td>GET /api/stream</td><td data-i18n="api_stream">Audio, with HTTP Range support</td></tr>
+            <tr><td>GET /api/playlist.m3u8</td><td data-i18n="api_playlist">Chunked (HLS) playlist for instant starts</td></tr>
+            <tr><td>GET /api/chunk</td><td data-i18n="api_chunk">One MPEG-TS chunk of a chunked stream</td></tr>
+            <tr><td>GET /api/cover</td><td data-i18n="api_cover">Embedded cover art (ffmpeg fallback)</td></tr>
+            <tr><td>GET /api/duration</td><td data-i18n="api_duration">ffprobe duration, cached</td></tr>
+            <tr><td>GET /api/users</td><td data-i18n="api_users">Everyone on the server, with track counts</td></tr>
+            <tr><td>POST /api/users</td><td data-i18n="api_users_post">Create a name (and its library)</td></tr>
+            <tr><td>GET /api/shares</td><td data-i18n="api_shares">Shared with me / I shared</td></tr>
+            <tr><td>POST /api/share</td><td data-i18n="api_share">Send a track to a person, or to everyone</td></tr>
+            <tr><td>POST /api/shares/:id/import</td><td data-i18n="api_import">Copy a shared track into your library</td></tr>
+            <tr><td>DELETE /api/track</td><td data-i18n="api_delete">Remove a file from your library</td></tr>
+            <tr><td>GET /api/health</td><td data-i18n="api_health">Tooling, users, chunked-streaming status</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- --------------------------------------------------------------- limits -->
+  <section id="limits">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow" data-i18n="limits_eyebrow">Honest limits</span>
+        <h2 data-i18n="limits_title">What it is not</h2>
+      </div>
+
+      <div class="limits">
+        <p class="limit"><span class="x" aria-hidden="true">✕</span><span><b data-i18n="l1_title">Not a public service.</b> <span data-i18n="l1_body">There are no accounts or passwords — keep it on your LAN, behind a VPN, or behind an authenticating proxy.</span></span></p>
+        <p class="limit"><span class="x" aria-hidden="true">✕</span><span><b data-i18n="l2_title">Not a YouTube client.</b> <span data-i18n="l2_body">YouTube audio can’t be streamed directly; the server downloads it first. Respect the terms of the services you use.</span></span></p>
+        <p class="limit"><span class="x" aria-hidden="true">✕</span><span><b data-i18n="l3_title">Not store-signed.</b> <span data-i18n="l3_body">The IPA is unsigned and the APK is debug-signed; both are meant for sideloading, not for the App Store or Play Store.</span></span></p>
+        <p class="limit"><span class="x" aria-hidden="true">✕</span><span><b data-i18n="l4_title">No magic discovery.</b> <span data-i18n="l4_body">iOS won’t find the server by itself — you type the address the server prints on startup.</span></span></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------------ faq -->
+  <section id="faq">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow" data-i18n="faq_eyebrow">FAQ</span>
+        <h2 data-i18n="faq_title">Questions people actually ask</h2>
+      </div>
+
+      <details>
+        <summary data-i18n="q1">Do I need internet?</summary>
+        <p data-i18n="a1">Only to search and download. Playing your library works on the local network, and tracks you saved to a device play with no server at all.</p>
+      </details>
+      <details>
+        <summary data-i18n="q2">Can several people use it at the same time?</summary>
+        <p data-i18n="a2">Yes. Each name gets its own library, downloads are queued per person, and the shared area is browsable by everyone.</p>
+      </details>
+      <details>
+        <summary data-i18n="q3">Where does my music actually live?</summary>
+        <p data-i18n="a3">In one folder on your own machine (<span class='inline-code'>MUSIC_DIR</span>, by default <span class='inline-code'>~/music</span>). Nothing is uploaded anywhere; the only outside traffic is the YouTube search and the downloads you ask for.</p>
+      </details>
+      <details>
+        <summary data-i18n="q4">What happens if the sender deletes a shared song?</summary>
+        <p data-i18n="a4">That share shows up as “file is gone” and can’t be played — but a copy somebody already imported stays in their library.</p>
+      </details>
+      <details>
+        <summary data-i18n="q5">Does the web app need HTTPS?</summary>
+        <p data-i18n="a5">For installing to the home screen and offline caching, yes — service workers require a secure context. Searching and streaming work over plain HTTP on your LAN.</p>
+      </details>
+      <details>
+        <summary data-i18n="q6">Can I build my own client?</summary>
+        <p data-i18n="a6">Please do. The API is small and plain JSON (table above), and all three shipped clients are just consumers of it.</p>
+      </details>
+      <details>
+        <summary data-i18n="q7">What is new in 3.0.0?</summary>
+        <p data-i18n="a7">Per-person libraries, sharing between people, chunked playback with a Range fallback, and the native Android app — alongside the SwiftUI iOS app and the PWA.</p>
+      </details>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div>
+        <strong>Resonance</strong>
+        <p data-i18n="footer_blurb">A self-hosted music player: your server, your files, your rules.</p>
+      </div>
+      <div>
+        <strong data-i18n="footer_links">Links</strong>
+        <ul>
+          <li><a href="https://github.com/rnetis/resonance" data-i18n="footer_repo">Repository &amp; README</a></li>
+          <li><a href="https://github.com/rnetis/resonance/releases" data-i18n="footer_releases">Releases (IPA &amp; APK)</a></li>
+          <li><a href="https://github.com/rnetis/resonance/releases/download/v3.0.0/Resonance.ipa">Resonance.ipa</a></li>
+          <li><a href="https://github.com/rnetis/resonance/releases/download/v3.0.0/resonance-android.apk">resonance-android.apk</a></li>
+        </ul>
+      </div>
+      <div>
+        <strong data-i18n="footer_built_title">Built with</strong>
+        <ul>
+          <li>Express 5 · yt-dlp · ffmpeg</li>
+          <li>SwiftUI · AVPlayer</li>
+          <li>Kotlin · Compose · Media3</li>
+        </ul>
+      </div>
+      <div>
+        <strong data-i18n="footer_status_title">Status</strong>
+        <ul>
+          <li data-i18n="footer_tests">29 integration tests, all green</li>
+          <li data-i18n="footer_ci">CI builds the iOS IPA and the Android APK</li>
+          <li data-i18n="footer_license">License: ISC (as declared in package.json)</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <span data-i18n="footer_note">Resonance is a self-hosted tool. Only download what you have the right to.</span>
+      <span><span data-i18n="footer_lang_note">Available in English and Persian</span> · <a href="#top" data-i18n="footer_top">Back to top</a></span>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  var STRINGS = {
+    en: {
+      dir: "ltr",
+      title: "Resonance — your music, on your own server",
+      s: {}
+    },
+    fa: {
+      dir: "rtl",
+      title: "Resonance — موسیقی شما، روی سرور خودتان",
+      s: {
+        nav_features: "ویژگی‌ها",
+        nav_how: "چطور کار می‌کند",
+        nav_chunked: "پخش فوری",
+        nav_people: "کتابخانه‌ها و اشتراک‌گذاری",
+        nav_install: "نصب",
+        nav_api: "API",
+        nav_faq: "پرسش‌ها",
+
+        hero_badge: "نسخهٔ ۳.۰.۰ — کتابخانهٔ جداگانه برای هر نفر، اشتراک‌گذاری و پخش تکه‌تکه",
+        hero_title: "موسیقی شما، روی سرور خودتان.",
+        hero_lede: "در یوتیوب جست‌وجو کنید، با yt-dlp دانلود کنید و یک کتابخانهٔ مرتب با تگ و کاور بسازید؛ بعد از مرورگر، آیفون یا اندروید گوش بدهید. هر کس قفسهٔ خودش را دارد و می‌توانید آهنگ‌ها را برای هم بفرستید.",
+        hero_cta_ios: "اپ آیفون",
+        hero_cta_android: "اپ اندروید",
+        hero_cta_github: "مشاهده در گیت‌هاب",
+        hero_note: "آی‌پی‌ای بدون امضاست (نصب دستی) · APK با امضای دیباگ · بدون فضای ابری، بدون حساب، بدون اشتراک.",
+        chip_pwa: "وب‌اپ نصب‌شدنی",
+        chip_ios: "آیفون و آیپد",
+        chip_android: "اندروید",
+        chip_peruser: "کتابخانه برای هر نفر",
+        chip_chunked: "پخش تکه‌تکه",
+
+        shots_eyebrow: "وب‌اپ",
+        shots_title: "یک پخش‌کنندهٔ واقعی، نه نمونهٔ نمایشی",
+        shots_lede: "صف پخش، شافل، تکرار، کلیدهای میانبر، ویژوالایزر زندهٔ طیف صدا و کنترل‌های Media Session — و مثل یک اپ نصب می‌شود.",
+        shot_search: "جست‌وجو: دانلود و پخش با یک لمس",
+        shot_library: "کتابخانه: پوشه‌ها، تگ‌ها و کاور",
+        shot_now: "در حال پخش، با ویژوالایزر",
+
+        features_eyebrow: "ویژگی‌ها",
+        features_title: "هر کاری که یک پخش‌کنندهٔ موسیقی باید بکند — بدون اشتراک",
+        features_lede: "یک سرور کوچک Express کار را انجام می‌دهد و سه کلاینت با همان API جیسون حرف می‌زنند.",
+        f1_title: "جست‌وجو ← دانلود ← پخش",
+        f1_body: "روی یک نتیجهٔ یوتیوب بزنید: با yt-dlp دانلود می‌شود، پیشرفت واقعی را می‌بینید (درصد، سرعت، زمان باقی‌مانده و «تبدیل صدا»)، تگ و کاور می‌گیرد و به‌محض آماده‌شدن پخش می‌شود.",
+        f2_title: "کتابخانه، نه فقط یک فهرست",
+        f2_body: "تگ‌های ID3v2 و M4A خوانده می‌شوند: پوشه‌ها، حالت بازگشتی «همهٔ آهنگ‌ها»، فیلتر، مدت‌زمان و کاور جاسازی‌شده با پشتیبان ffmpeg.",
+        f3_title: "کتابخانهٔ جدا برای هر نفر",
+        f3_body: "یک‌بار در هر دستگاه نام خود را انتخاب کنید؛ سرور فقط پوشهٔ همان نفر را برمی‌گرداند. کتابخانه‌ای که همین حالا دارید در اختیار مالک سرور می‌ماند و دست‌نخورده است.",
+        f4_title: "آهنگ‌ها را برای هم بفرستید",
+        f4_body: "یک آهنگ را برای یک نفر یا برای همه بفرستید. فایل در کتابخانهٔ شما می‌ماند؛ طرف مقابل می‌تواند همان‌جا پخش کند یا یک کپی به کتابخانهٔ خودش بیاورد.",
+        f5_title: "در چند میلی‌ثانیه شروع می‌شود، نه چند دقیقه",
+        f5_body: "هر آهنگ به قطعه‌های حدوداً ۴ ثانیه‌ای (HLS) تقسیم می‌شود تا پخش از قطعهٔ اول شروع شود؛ پخش معمولی Range روی کل فایل هم به‌طور خودکار پشتیبان است.",
+        f6_title: "یک سرور، سه کلاینت",
+        f6_body: "وب‌اپ نصب‌شدنی، اپ نیتیو آیفون با SwiftUI و اپ نیتیو اندروید با Kotlin/Compose — همان API، همان کتابخانه، همان رفتار صف پخش.",
+        f7_title: "با قفل‌شدن صفحه قطع نمی‌شود",
+        f7_body: "صدای پس‌زمینهٔ واقعی: AVAudioSession و فرمان‌های ریموت در iOS و MediaSessionService در اندروید؛ صفحهٔ قفل، دکمه‌های هدست و کنترل خودرو کار می‌کنند.",
+        f8_title: "آفلاین، هر وقت خواستید",
+        f8_body: "آهنگ را روی دستگاه ذخیره کنید تا بدون سرور هم پخش شود — در iOS و اندروید به‌صورت فایل واقعی و در مرورگر با Cache Storage (این یکی به HTTPS نیاز دارد).",
+        f9_title: "صف، پلی‌لیست، شافل و ویژوالایزر",
+        f9_body: "پخش بعدی، افزودن به صف، شافل و تکرار (خاموش/همه/یکی)، جابه‌جایی زمان، کلیدهای میانبر و پلی‌لیست — به‌همراه ویژوالایزر زندهٔ طیف صدا در وب‌اپ.",
+
+        how_eyebrow: "معماری",
+        how_title: "چطور کار می‌کند",
+        how_lede: "از مرورگر یا موبایل نمی‌توان مستقیم صدای یوتیوب را پخش کرد و yt-dlp روی iOS اجرا نمی‌شود؛ پس کار سنگین با سرور است و کلاینت‌ها سبک می‌مانند.",
+        how_s1_title: "سرور Express 5 (فایل server.js)",
+        how_s1_body: "جست‌وجو، صف دانلود، خواندن تگ‌های ID3/M4A، استخراج کاور، کتابخانهٔ هر نفر، اشتراک‌گذاری، پخش Range و تکه‌تکه‌سازی.",
+        how_s2_title: "yt-dlp و ffmpeg روی دستگاه شما",
+        how_s2_body: "صدا را دانلود می‌کند، متادیتا و کاور را جا می‌گذارد، مدت‌زمان را می‌خواند و آهنگ را درخواستی به قطعه‌ها می‌شکند.",
+        how_s3_title: "کتابخانهٔ شما، فایل‌های معمولی",
+        how_s3_body: "همه‌چیز در پوشه‌ای است که مال خودتان است: نسخهٔ پشتیبان بگیرید، کپی کنید یا از طریق SMB موسیقی جدید بریزید — در اپ‌ها دیده می‌شود.",
+
+        chunk_eyebrow: "پخش تکه‌تکه",
+        chunk_title: "چرا پخش فوری به‌نظر می‌رسد",
+        chunk_lede: "انتظار برای دانلود کامل فایل قبل از شنیدن نت اول، هدر دادن وقت است. سرور یک پلی‌لیست کوتاه به پخش‌کننده می‌دهد و آهنگ را همان‌طور که پیش می‌رود به تکه‌های ۴ ثانیه‌ای می‌شکند.",
+        chunk_step1_title: "۱ · اول پلی‌لیست",
+        chunk_step1_body: "درخواست <span class='inline-code'>/api/playlist.m3u8</span> بلافاصله جواب می‌گیرد — و همان لحظه ffmpeg در پس‌زمینه تقسیم فایل را شروع می‌کند.",
+        chunk_step2_title: "۲ · بعد تکه‌ها",
+        chunk_step2_body: "پخش‌کننده هر تکه را با <span class='inline-code'>/api/chunk?key=…&amp;name=seg00001.ts</span> می‌گیرد؛ پس با فقط یک تکه می‌تواند شروع کند.",
+        chunk_step3_title: "۳ · کش برای هر فایل",
+        chunk_step3_body: "تکه‌ها بر اساس مسیر + حجم + زمان تغییر کلید می‌خورند و خودکار پاک‌سازی می‌شوند؛ پخش دوم همان آهنگ فوری است.",
+        chunk_legend_start: "▲ صدا از اینجا شروع می‌شود",
+        chunk_legend_end: "بقیه هنوز می‌رسد",
+        chunk_note: "ffmpeg روی سرور نیست؟ در <span class='inline-code'>/api/health</span> اعلام می‌شود و همهٔ کلاینت‌ها بی‌صدا به پخش معمولی Range برمی‌گردند — کمی دیرتر شروع می‌شود، ولی شنیدنش هیچ تفاوتی ندارد.",
+
+        people_eyebrow: "چند کاربری و اشتراک‌گذاری",
+        people_title: "هر کس قفسهٔ خودش — به‌علاوهٔ یک قفسهٔ مشترک",
+        people_lede: "نام، رمز نیست: تعیین می‌کند سرور کدام کتابخانه را نشان دهد. هیچ‌کس مجبور نیست موسیقی دیگری را ببیند.",
+        tree_owner: "← کتابخانهٔ خود مالک سرور",
+        tree_user: "← کتابخانهٔ سام",
+        tree_user2: "← کتابخانهٔ باب",
+        tree_shared: "← فقط خواندنی، برای همه",
+        people_o1_title: "کتابخانهٔ فعلی شما در امان است",
+        people_o1: "فایل‌هایی که همین حالا در پوشهٔ موسیقی شما هستند به مالک سرور (<span class='inline-code'>DEFAULT_USER</span>) تعلق دارند؛ پس نصب فعلی بدون تغییر و بدون جابه‌جایی فایل کار می‌کند.",
+        people_o2_title: "نام جدید، پوشهٔ خالی جدید",
+        people_o2: "هر کس نامی انتخاب کند، پوشهٔ خودش را زیر <span class='inline-code'>users/&lt;name&gt;</span> می‌گیرد. هیچ‌چیز تصادفی به اشتراک گذاشته نمی‌شود و دانلودها در پوشهٔ همان درخواست‌کننده می‌نشینند.",
+        people_o3_title: "یک بخش مشترک برای خانه",
+        people_o3: "فایل‌ها را در <span class='inline-code'>shared/</span> بگذارید تا همه بتوانند ببینند و پخش کنند — از طریق اپ‌ها فقط خواندنی است، پس کسی موسیقی دیگران را پاک نمی‌کند.",
+        people_s1_title: "«اشتراک‌گذاری با…»",
+        people_s1: "از منوی هر آهنگ، در هر کلاینتی، یک نفر را انتخاب کنید — یا «همه» روی سرور. اگر بخواهید یادداشتی هم بگذارید، کنار آهنگ دیده می‌شود.",
+        people_s2_title: "همان‌جا پخش شود",
+        people_s2: "گیرنده آهنگ را مستقیماً از کتابخانهٔ شما پخش می‌کند و دسترسی در هر درخواست بررسی می‌شود — کسی که در اشتراک نبوده، پاسخ ۴۰۳ می‌گیرد.",
+        people_s3_title: "یا یک کپی نگه دارد",
+        people_s3: "«ذخیره در کتابخانهٔ من» فایل را در پوشهٔ او کپی می‌کند و اگر هم‌نامی وجود داشته باشد، اسمش را تغییر می‌دهد تا چیزی پاک نشود.",
+        people_warn: "نام کاربری احراز هویت نیست. این یک سرور خانگی/شبکهٔ محلی است: قبل از قرار دادن روی اینترنت، آن را پشت VPN یا پروکسی دارای احراز هویت بگذارید.",
+
+        install_eyebrow: "نصب",
+        install_title: "روی موبایل نصب کنید",
+        install_lede: "سرور را اجرا کنید، اپ را به آن وصل کنید و نامی را که می‌خواهید با آن گوش بدهید وارد کنید. همین تمام راه‌اندازی است.",
+        pwa_title: "وب‌اپ — هر گوشی",
+        pwa_body: "آدرس سرور را در مرورگر باز کنید و «افزودن به صفحهٔ خانه» را بزنید: تمام‌صفحه، پوستهٔ آفلاین و کنترل‌های Media Session روی صفحهٔ قفل.",
+        pwa_li1: "بدون فروشگاه، بدون فایل نصب",
+        pwa_li2: "برای نصب و حالت آفلاین به HTTPS (یا localhost) نیاز است",
+        pwa_cta: "راهنمای نصب",
+        ios_title: "آیفون / آیپد",
+        ios_body: "فایل IPA بدون امضا را دانلود کنید و با AltStore، Sideloadly یا TrollStore نصب کنید — این ابزارها برای دستگاه شما امضایش می‌کنند.",
+        ios_li1: "iOS ۱۶ یا جدیدتر",
+        ios_li2: "صدای پس‌زمینه و کنترل‌های صفحهٔ قفل",
+        ios_li3: "ذخیرهٔ آهنگ روی دستگاه با HTTP ساده",
+        ios_cta: "دانلود IPA",
+        android_title: "اندروید",
+        android_body: "فایل APK را دانلود و نصب کنید — وقتی سیستم پرسید، اجازهٔ نصب از منابع نامشخص را بدهید.",
+        android_li1: "اندروید ۷ یا جدیدتر",
+        android_li2: "پخش پس‌زمینه با Media3 و کنترل‌های اعلان",
+        android_li3: "امضای دیباگ: برای به‌روزرسانی، نسخهٔ قبلی را حذف کنید",
+        android_cta: "دانلود APK",
+
+        start_eyebrow: "شروع سریع",
+        start_title: "سرور را اجرا کنید",
+        start_lede: "پیش‌نیازها: Node ۲۰ یا جدیدتر و yt-dlp و ffmpeg/ffprobe روی PATH.",
+        start_step1: "نصب و اجرا",
+        start_step2: "اجرای تست‌ها",
+        start_note: "سرور همهٔ آدرس‌هایی که می‌توان به آن وصل شد را چاپ می‌کند، مثلاً <span class='inline-code'>http://192.168.1.20:3130</span> — همین را در اپ‌ها وارد کنید.",
+        start_test_note: "بدون حساب و بدون سرویس بیرونی: تست‌ها یک کتابخانهٔ موقت با ffmpeg می‌سازند و سرور واقعی را اجرا می‌کنند.",
+        copy: "کپی",
+        copied: "کپی شد",
+
+        api_eyebrow: "API",
+        api_title: "کوچک و جیسون ساده — کلاینت خودتان را بنویسید",
+        api_lede: "هر کار سه کلاینت از این مسیرها می‌گذرد. هویت در درخواست‌های API با <span class='inline-code'>X-Resonance-User</span> و در آدرس فایل‌های رسانه با <span class='inline-code'>?user=</span> فرستاده می‌شود (پخش‌کننده‌ها هدر نمی‌فرستند).",
+        th_route: "مسیر",
+        th_what: "کار",
+        api_search: "نتایج یوتیوب برای یک عبارت",
+        api_download: "افزودن دانلود با yt-dlp به کتابخانهٔ شما",
+        api_jobs: "صف دانلود شما با پیشرفت زنده",
+        api_tracks: "کتابخانهٔ شما (یا <span class='inline-code'>scope=shared</span>) همراه تگ‌ها",
+        api_stream: "صدا، با پشتیبانی HTTP Range",
+        api_playlist: "پلی‌لیست تکه‌تکه (HLS) برای شروع فوری",
+        api_chunk: "یک تکهٔ MPEG-TS از پخش تکه‌تکه",
+        api_cover: "کاور جاسازی‌شده (با پشتیبان ffmpeg)",
+        api_duration: "مدت‌زمان با ffprobe، کش‌شده",
+        api_users: "همهٔ افراد سرور، با تعداد آهنگ",
+        api_users_post: "ساخت یک نام (و کتابخانه‌اش)",
+        api_shares: "اشتراک‌گذاشته‌شده با من / من فرستادم",
+        api_share: "فرستادن یک آهنگ به یک نفر یا به همه",
+        api_import: "کپی آهنگ اشتراکی به کتابخانهٔ شما",
+        api_delete: "حذف یک فایل از کتابخانهٔ شما",
+        api_health: "وضعیت ابزارها، کاربران و پخش تکه‌تکه",
+
+        limits_eyebrow: "محدودیت‌های صادقانه",
+        limits_title: "این‌ها نیست",
+        l1_title: "سرویس عمومی نیست.",
+        l1_body: "حساب و رمز ندارد — آن را در شبکهٔ محلی، پشت VPN یا پشت پروکسی دارای احراز هویت نگه دارید.",
+        l2_title: "کلاینت یوتیوب نیست.",
+        l2_body: "صدای یوتیوب مستقیم پخش نمی‌شود؛ سرور اول دانلود می‌کند. شرایط سرویس‌هایی که استفاده می‌کنید را رعایت کنید.",
+        l3_title: "امضای فروشگاه‌ها را ندارد.",
+        l3_body: "IPA بدون امضا و APK با امضای دیباگ است؛ هر دو برای نصب دستی، نه برای اپ‌استور و گوگل‌پلی.",
+        l4_title: "پیدا کردن خودکار ندارد.",
+        l4_body: "iOS خودش سرور را پیدا نمی‌کند — همان آدرسی را که سرور در شروع چاپ می‌کند دستی وارد کنید.",
+
+        faq_eyebrow: "پرسش‌های پرتکرار",
+        faq_title: "سؤال‌هایی که واقعاً پرسیده می‌شود",
+        q1: "به اینترنت نیاز دارم؟",
+        a1: "فقط برای جست‌وجو و دانلود. پخش کتابخانه در شبکهٔ محلی کار می‌کند و آهنگ‌هایی که روی دستگاه ذخیره کرده‌اید، حتی بدون سرور هم پخش می‌شوند.",
+        q2: "چند نفر می‌توانند هم‌زمان استفاده کنند؟",
+        a2: "بله. هر نام کتابخانهٔ خودش را دارد، دانلودها به‌ازای هر نفر صف می‌شوند و بخش مشترک برای همه قابل مشاهده است.",
+        q3: "موسیقی من واقعاً کجاست؟",
+        a3: "در یک پوشه روی دستگاه خودتان (<span class='inline-code'>MUSIC_DIR</span>، پیش‌فرض <span class='inline-code'>~/music</span>). هیچ‌چیز جایی آپلود نمی‌شود؛ تنها ترافیک بیرونی، جست‌وجوی یوتیوب و دانلودهایی است که خودتان می‌خواهید.",
+        q4: "اگر فرستنده آهنگ اشتراکی را پاک کند چه می‌شود؟",
+        a4: "آن اشتراک «فایل موجود نیست» نشان داده می‌شود و پخش نمی‌شود — اما کپی‌ای که کسی وارد کتابخانه‌اش کرده، مال خودش می‌ماند.",
+        q5: "وب‌اپ به HTTPS نیاز دارد؟",
+        a5: "برای نصب روی صفحهٔ خانه و کش آفلاین بله — سرویس‌ورکرها به بستر امن نیاز دارند. جست‌وجو و پخش روی HTTP ساده در شبکهٔ محلی کار می‌کند.",
+        q6: "می‌توانم کلاینت خودم را بسازم؟",
+        a6: "حتماً. API کوچک و جیسون ساده است (جدول بالا) و هر سه کلاینت فعلی فقط مصرف‌کنندهٔ همان هستند.",
+        q7: "در نسخهٔ ۳.۰.۰ چه چیز جدیدی هست؟",
+        a7: "کتابخانهٔ جدا برای هر نفر، اشتراک‌گذاری بین افراد، پخش تکه‌تکه با پشتیبان Range و اپ نیتیو اندروید — در کنار اپ SwiftUI آیفون و وب‌اپ.",
+
+        footer_blurb: "یک پخش‌کنندهٔ موسیقی با میزبانی شخصی: سرور شما، فایل‌های شما، قوانین شما.",
+        footer_links: "پیوندها",
+        footer_repo: "مخزن و راهنمای پروژه",
+        footer_releases: "نسخه‌ها (IPA و APK)",
+        footer_built_title: "ساخته‌شده با",
+        footer_status_title: "وضعیت",
+        footer_tests: "۲۹ تست یکپارچه، همه سبز",
+        footer_ci: "CI هم IPA آیفون و هم APK اندروید را می‌سازد",
+        footer_license: "مجوز: ISC (طبق فایل package.json)",
+        footer_note: "Resonance یک ابزار شخصی است. فقط چیزی را دانلود کنید که حق آن را دارید.",
+        footer_lang_note: "به انگلیسی و فارسی",
+        footer_top: "بازگشت به بالا"
+      }
+    }
+  };
+
+  var STORAGE_KEY = "resonance.promo.lang";
+  var current = "en";
+
+  // The English copy IS the markup, so remember it before translating anything.
+  // Snapshotting on first switch instead would lose English when the page opens
+  // already in Persian (auto-detected).
+  function snapshot() {
+    var nodes = document.querySelectorAll("[data-i18n]");
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i].dataset.enHtml === undefined) nodes[i].dataset.enHtml = nodes[i].innerHTML;
+    }
+  }
+
+  function apply(lang) {
+    var pack = STRINGS[lang] || STRINGS.en;
+    current = STRINGS[lang] ? lang : "en";
+
+    var html = document.documentElement;
+    html.lang = current;
+    html.dir = pack.dir;
+    document.title = pack.title;
+
+    var nodes = document.querySelectorAll("[data-i18n]");
+    for (var i = 0; i < nodes.length; i++) {
+      var node = nodes[i];
+
+      if (current === "en") {
+        if (node.dataset.enHtml !== undefined) node.innerHTML = node.dataset.enHtml;
+        continue;
+      }
+
+      var value = pack.s[node.getAttribute("data-i18n")];
+      if (value !== undefined) node.innerHTML = value;
+    }
+
+    var buttons = document.querySelectorAll("[data-lang-btn]");
+    for (var j = 0; j < buttons.length; j++) {
+      buttons[j].setAttribute("aria-pressed", String(buttons[j].getAttribute("data-lang-btn") === current));
+    }
+
+    var copyButtons = document.querySelectorAll(".copy");
+    for (var k = 0; k < copyButtons.length; k++) {
+      copyButtons[k].textContent = current === "fa" ? pack.s.copy : "Copy";
+      copyButtons[k].removeAttribute("data-copied");
+    }
+
+    try { localStorage.setItem(STORAGE_KEY, current); } catch (e) {}
+  }
+
+  function detect() {
+    var stored = null;
+    try { stored = localStorage.getItem(STORAGE_KEY); } catch (e) {}
+    if (stored === "en" || stored === "fa") return stored;
+
+    var langs = navigator.languages || [navigator.language || "en"];
+    for (var i = 0; i < langs.length; i++) {
+      var code = String(langs[i]).toLowerCase();
+      if (code.indexOf("fa") === 0 || code.indexOf("pes") === 0 || code.indexOf("per") === 0) return "fa";
+      if (code.indexOf("en") === 0) return "en";
+    }
+    return "en";
+  }
+
+  // Copy buttons: clipboard API where available, selection fallback otherwise.
+  function wireCopy() {
+    var buttons = document.querySelectorAll(".copy");
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].addEventListener("click", function () {
+        var button = this;
+        var block = button.parentElement;
+        var code = block ? block.querySelector("pre") : null;
+        if (!code) return;
+
+        var text = code.innerText.replace(/\u00a0/g, " ");
+        var done = function () {
+          button.setAttribute("data-copied", "1");
+          button.textContent = current === "fa" ? STRINGS.fa.s.copied : "Copied";
+          setTimeout(function () {
+            button.removeAttribute("data-copied");
+            button.textContent = current === "fa" ? STRINGS.fa.s.copy : "Copy";
+          }, 1600);
+        };
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () { legacy(text, done); });
+        } else {
+          legacy(text, done);
+        }
+      });
+    }
+  }
+
+  function legacy(text, done) {
+    var area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    try { document.execCommand("copy"); done(); } catch (e) { /* leave it selected */ }
+    document.body.removeChild(area);
+  }
+
+  function wireLangSwitch() {
+    var buttons = document.querySelectorAll("[data-lang-btn]");
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].addEventListener("click", function () {
+        apply(this.getAttribute("data-lang-btn"));
+      });
+    }
+  }
+
+  function init() {
+    snapshot();
+    wireLangSwitch();
+    wireCopy();
+    apply(detect());
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+  else init();
+})();
+</script>
+</body>
+</html>

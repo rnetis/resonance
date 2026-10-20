@@ -18,6 +18,11 @@ Kotlin/Compose Android app. YouTube search via `youtube-search-api`, downloads v
                                              └─ shared/           (read-only, everyone)
 ```
 
+**Landing page:** <https://rnetis.github.io/resonance/> — a bilingual (English / فارسی) promo
+page for this project, with screenshots, the feature tour, install links and the API summary.
+Source: [`docs/index.html`](docs/index.html) — one self-contained file (GitHub Pages serves it
+from `/docs`; open it directly or drop it on any static host).
+
 ## Highlights
 
 - **Installable PWA** — web manifest, service worker app-shell cache, maskable icons,
@@ -150,6 +155,7 @@ public/manifest.webmanifest
 public/icons/*         generated icon set (tools/make-icons.py)
 tests/api.test.js      API integration tests: library, streaming, covers, jobs, PWA (node:test)
 tests/multiuser.test.js  users, per-person isolation, sharing, chunked (HLS) streaming
+docs/index.html        bilingual promo / landing page (English + Persian), GitHub Pages entry
 docs/screenshots/      library / search / now-playing screenshots
 ios/                   native SwiftUI client — see ios/README.md
 android/               native Kotlin/Compose client — see android/README.md
