@@ -20,6 +20,9 @@ final class AudioSessionController {
     private var observing = false
     private var isPlaying = false
     private var wasPlayingBeforeInterruption = false
+    // AVAudioSession has no public "is active" getter, so track the result ourselves.
+    private var activationSucceeded: Bool?
+    private var activationError: String?
 
     private init() {}
 
@@ -46,7 +49,11 @@ final class AudioSessionController {
 
         do {
             try session.setActive(true)
+            activationSucceeded = true
+            activationError = nil
         } catch {
+            activationSucceeded = false
+            activationError = error.localizedDescription
             print("AudioSession activate failed: \(error.localizedDescription)")
         }
     }
@@ -63,9 +70,17 @@ final class AudioSessionController {
 
     /// Human-readable state, surfaced in the app's diagnostics panel.
     func snapshot() -> String {
-        [
+        let claimed: String
+
+        switch activationSucceeded {
+        case .some(true): claimed = "yes"
+        case .some(false): claimed = "failed (\(activationError ?? "unknown"))"
+        case .none: claimed = "not activated yet"
+        }
+
+        return [
             "category: \(session.category.rawValue)",
-            "active: \(session.isActive ? "yes" : "no")",
+            "session active: \(claimed)",
             "other audio: \(session.isOtherAudioPlaying ? "yes" : "no")",
             "page playing: \(isPlaying ? "yes" : "no")"
         ].joined(separator: " · ")

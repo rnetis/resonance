@@ -111,11 +111,12 @@ data* and *Forget server address*.
 - **No cover art on the lock screen** → the page reports an absolute artwork URL; if your
   server is HTTPS with a self-signed certificate, enable *Trust self-signed certificate*.
 - **Playback stops when the screen locks** → open the app's sliders button →
-  *Diagnostics*: after starting a track it should read `active: yes` and `page playing: yes`,
-  and the lock screen should show the title. Long-press the lock-screen entry to make sure
-  the app is the active media app rather than another player. Note that starting playback
-  *from the lock screen* right after a cold launch cannot work (the page has not reported a
-  playable track yet) — start the first track in the app.
+  *Diagnostics*: after starting a track it should read `session active: yes` and
+  `page playing: yes`, and the lock screen should show the title. Long-press the
+  lock-screen entry to make sure the app is the active media app rather than another
+  player. Note that starting playback *from the lock screen* right after a cold launch
+  cannot work (the page has not reported a playable track yet) — start the first track in
+  the app.
 
 ## Housekeeping
 
